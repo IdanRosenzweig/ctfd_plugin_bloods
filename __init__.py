@@ -20,20 +20,26 @@ class BloodAward(db.Model):
 
 
 def init_default_configs():
-    """Sets the default plugin configurations in the DB if they don't exist yet."""
+    """sets the default plugin config if it doesn't exist yet"""
+    
     if get_config("bloods_max_positions") is None:
+        # default number of blood positions
         set_config("bloods_max_positions", "3")
 
+        # default bloods parameters
         defaults = {
             "bloods_bonus_1": "20",
-            "bloods_bonus_2": "10",
-            "bloods_bonus_3": "5",
             "bloods_title_1": "First Blood",
-            "bloods_title_2": "Second Blood",
-            "bloods_title_3": "Third Blood",
             "bloods_icon_1": "crown",
+            
+            "bloods_bonus_2": "10",
+            "bloods_title_2": "Second Blood",
             "bloods_icon_2": "crown",
+            
+            "bloods_bonus_3": "5",
+            "bloods_title_3": "Third Blood",
             "bloods_icon_3": "crown",
+            
             "bloods_filter_mode": "blacklist",
             "bloods_filter_list": "",
         }
@@ -41,9 +47,12 @@ def init_default_configs():
             set_config(k, v)
 
 def reset_default_configs():
-    """reset the plugin configurations in the DB and clean up obsolete ranks"""
+    """resets the plugin config"""
+    
+    # default number of blood positions
     set_config("bloods_max_positions", "3")
 
+    # default bloods parameters
     defaults = {
         "bloods_bonus_1": "20",
         "bloods_title_1": "First Blood",
@@ -60,38 +69,30 @@ def reset_default_configs():
         "bloods_filter_mode": "blacklist",
         "bloods_filter_list": "",
     }
-    
-    # 1. Set the defaults for 1st, 2nd, and 3rd
     for k, v in defaults.items():
         set_config(k, v)
 
-    # 2. Erase all configs for 4th place and higher
-    # Look for any config keys that start with "bloods_"
+    # erase all previous bloods configs
     all_bloods_configs = Configs.query.filter(Configs.key.like("bloods_%")).all()
     
     for config_row in all_bloods_configs:
-        # Split the key (e.g., "bloods_bonus_4" becomes ["bloods", "bonus", "4"])
         parts = config_row.key.split("_")
         
-        # Check if the last part of the key is a number
         if parts[-1].isdigit():
             position = int(parts[-1])
-            # If the position is 4 or greater, delete it entirely!
             if position > 3:
                 db.session.delete(config_row)
                 
-    # Commit the deletions to the database
-    db.session.commit()
+    db.session.commit() # commit the delete changes to the database
+    
 
 def sync_all_bloods():
     """Strictly enforces that the awards perfectly match the current top solvers and configuration."""
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
-    # Get max positions dynamically
     max_positions = int(get_config("bloods_max_positions") or 3)
 
-    # Dynamically build configuration dictionaries for up to max_positions
     bonuses = {}
     titles = {}
     icons = {}
@@ -99,7 +100,6 @@ def sync_all_bloods():
     for i in range(1, max_positions + 1):
         bonuses[i] = int(get_config(f"bloods_bonus_{i}") or 0)
 
-        # Create sensible default names if an admin expands the list but hasn't set names yet
         default_title = (
             "First Blood"
             if i == 1
@@ -144,7 +144,6 @@ def sync_all_bloods():
                 Teams.banned == False, Teams.hidden == False
             )
 
-        # Dynamic Limit based on max_positions
         top_solves = (
             query.order_by(Solves.date.asc(), Solves.id.asc())
             .limit(max_positions)
@@ -156,7 +155,6 @@ def sync_all_bloods():
         valid_positions_kept = []
 
         for tracker in trackers:
-            # NEW: If admin reduced max_positions (e.g., 3 down to 1), delete out-of-bounds awards
             if tracker.position > max_positions:
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
@@ -213,10 +211,10 @@ def sync_all_bloods():
                 db.session.add(new_tracker)
                 db.session.commit()
 
-
 def load(app):
     app.db.create_all()
 
+    # on startup, init default config and perform initial sync
     with app.app_context():
         try:
             init_default_configs()
@@ -227,6 +225,7 @@ def load(app):
 
     bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
+    # bloods admin page
     @bloods_bp.route("/admin/bloods", methods=["GET", "POST"])
     @admins_only
     def admin_bloods_config():
@@ -263,6 +262,9 @@ def load(app):
             max_positions=int(get_config("bloods_max_positions") or 3),
         )
 
+    register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
+
+    # bloods page
     @bloods_bp.route("/bloods", methods=["GET"])
     def bloods_page():
         bloods_data = BloodAward.query.all()
@@ -301,8 +303,8 @@ def load(app):
     app.register_blueprint(bloods_bp)
 
     register_user_page_menu_bar("Bloods", "/bloods")
-    register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
 
+    # perform sync on every action that could have caused a relevant change
     @app.after_request
     def trigger_bloods_sync(response):
         if request.method in ["POST", "PATCH", "DELETE"]:
@@ -318,3 +320,4 @@ def load(app):
                 except Exception as e:
                     print(f"[Bloods Plugin] Sync Error: {e}")
         return response
+    
