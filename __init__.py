@@ -127,10 +127,13 @@ def load(app):
             bloods.append(
                 {
                     "challenge_name": chal.name,
+                    "challenge_id": chal.id,
                     "user_name": user.name if user else "Unknown",
+                    "user_id": user.id if user else None,
                     "team_name": team.name if team else "None",
+                    "team_id": team.id if team else None,
                     "date": solve.date if solve else None,
-                    "position": b.position
+                    "position": b.position                    
                 }
             )
 
