@@ -6,21 +6,25 @@ from CTFd.plugins import register_user_page_menu_bar
 
 # --- CONFIGURATION ---
 # Set the points for 1st, 2nd, and 3rd place
-BLOODS_BONUSES = {
-    1: 20,
-    2: 10,
-    3: 5
-}
+BLOODS_BONUSES = {1: 20, 2: 10, 3: 5}
 
 # Set the titles and icons for 1st, 2nd, and 3rd place
 TITLES = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
 ICONS = {1: "crown", 2: "crown", 3: "crown"}
+
+# filter challenge
+FILTER_MODE = "blacklist"
+FILTER_BLACKLIST = ["welcome"]
+FILTER_WHITELIST = []
 # ---------------------
+
 
 class BloodAward(db.Model):
     __tablename__ = "blood_awards"
     id = db.Column(db.Integer, primary_key=True)
-    challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE"))
+    challenge_id = db.Column(
+        db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE")
+    )
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"))
     award_id = db.Column(db.Integer, db.ForeignKey("awards.id", ondelete="CASCADE"))
@@ -33,11 +37,30 @@ def sync_all_bloods():
     challenges = Challenges.query.all()
 
     for chal in challenges:
+        chal_has_blood: bool = False
+        if FILTER_MODE == "blacklist":
+            chal_has_blood = chal.name not in FILTER_BLACKLIST
+        elif FILTER_MODE == "whitelist":
+            chal_has_blood = chal.name in FILTER_WHITELIST
+        else:
+            raise ValueError(f"Invalid FILTER_MODE: {FILTER_MODE}. Must be 'whitelist' or 'blacklist'.")
+
+        if not chal_has_blood:
+            # delete any existing blood awards for this chal
+            trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
+            for tracker in trackers:
+                award = Awards.query.filter_by(id=tracker.award_id).first()
+                if award:
+                    db.session.delete(award)
+                db.session.delete(tracker)
+            db.session.commit()
+            continue # Skip the rest of the logic and move to the next challenge
+        
         # 1. Find the true, valid top 3 solves for this challenge
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
-
+        
         if user_mode == "teams":
             query = query.join(Teams, Solves.team_id == Teams.id).filter(
                 Teams.banned == False, Teams.hidden == False
@@ -45,7 +68,7 @@ def sync_all_bloods():
 
         top_solves = query.order_by(Solves.date.asc(), Solves.id.asc()).limit(3).all()
         valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
-        
+
         # 2. Grab all currently tracked awards for this challenge
         trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
         valid_positions_kept = []
@@ -53,8 +76,12 @@ def sync_all_bloods():
         # 3. Aggressively clean up or update existing awards
         for tracker in trackers:
             expected_solve = valid_state.get(tracker.position)
-            
-            if expected_solve and tracker.user_id == expected_solve.user_id and tracker.team_id == expected_solve.team_id:
+
+            if (
+                expected_solve
+                and tracker.user_id == expected_solve.user_id
+                and tracker.team_id == expected_solve.team_id
+            ):
                 # The solver is correct! Let's rigorously update the award details to match the config
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
@@ -73,7 +100,7 @@ def sync_all_bloods():
                 if award:
                     db.session.delete(award)
                 db.session.delete(tracker)
-                
+
         db.session.commit()
 
         # 4. Issue missing awards for any position that isn't perfectly tracked
@@ -97,7 +124,7 @@ def sync_all_bloods():
                     user_id=solve.user_id,
                     team_id=solve.team_id,
                     award_id=award.id,
-                    position=pos
+                    position=pos,
                 )
                 db.session.add(new_tracker)
                 db.session.commit()
@@ -105,15 +132,15 @@ def sync_all_bloods():
 
 def load(app):
     app.db.create_all()
-    
-    # un an initial sync right when the server starts
+
+    # run an initial sync right when the server starts
     with app.app_context():
         try:
             sync_all_bloods()
             print("[Bloods Plugin] Initial sync completed successfully on startup!")
         except Exception as e:
             print(f"[Bloods Plugin] Initial sync failed during startup: {e}")
-    
+
     # the bloods page
     bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
@@ -142,7 +169,7 @@ def load(app):
                     "team_name": team.name if team else "None",
                     "team_id": team.id if team else None,
                     "date": solve.date if solve else None,
-                    "position": b.position                    
+                    "position": b.position,
                 }
             )
 
@@ -155,7 +182,7 @@ def load(app):
 
     app.register_blueprint(bloods_bp)
 
-    register_user_page_menu_bar("Bloods", "/bloods") # register the bloods page in the menu bar
+    register_user_page_menu_bar("Bloods", "/bloods")
 
     # update the bloods after each request that could have affected
     @app.after_request
@@ -173,5 +200,3 @@ def load(app):
                 except Exception as e:
                     print(f"[Bloods Plugin] Sync Error: {e}")
         return response
-    
-    
