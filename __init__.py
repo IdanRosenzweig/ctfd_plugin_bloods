@@ -1,6 +1,6 @@
 import datetime
 from flask import Blueprint, render_template, request
-from CTFd.models import db, Solves, Awards, Challenges, Users, Teams
+from CTFd.models import db, Solves, Awards, Challenges, Users, Teams, Configs
 from CTFd.utils import get_config, set_config
 from CTFd.utils.decorators import admins_only
 from CTFd.plugins import register_user_page_menu_bar, register_admin_plugin_menu_bar
@@ -41,24 +41,47 @@ def init_default_configs():
             set_config(k, v)
 
 def reset_default_configs():
-    """reset the plugin configurations in the DB"""
+    """reset the plugin configurations in the DB and clean up obsolete ranks"""
     set_config("bloods_max_positions", "3")
 
     defaults = {
         "bloods_bonus_1": "20",
-        "bloods_bonus_2": "10",
-        "bloods_bonus_3": "5",
         "bloods_title_1": "First Blood",
-        "bloods_title_2": "Second Blood",
-        "bloods_title_3": "Third Blood",
         "bloods_icon_1": "crown",
+        
+        "bloods_bonus_2": "10",
+        "bloods_title_2": "Second Blood",
         "bloods_icon_2": "crown",
+        
+        "bloods_bonus_3": "5",
+        "bloods_title_3": "Third Blood",
         "bloods_icon_3": "crown",
+        
         "bloods_filter_mode": "blacklist",
         "bloods_filter_list": "",
     }
+    
+    # 1. Set the defaults for 1st, 2nd, and 3rd
     for k, v in defaults.items():
         set_config(k, v)
+
+    # 2. Erase all configs for 4th place and higher
+    # Look for any config keys that start with "bloods_"
+    all_bloods_configs = Configs.query.filter(Configs.key.like("bloods_%")).all()
+    
+    for config_row in all_bloods_configs:
+        # Split the key (e.g., "bloods_bonus_4" becomes ["bloods", "bonus", "4"])
+        parts = config_row.key.split("_")
+        
+        # Check if the last part of the key is a number
+        if parts[-1].isdigit():
+            position = int(parts[-1])
+            # If the position is 4 or greater, delete it entirely!
+            if position > 3:
+                db.session.delete(config_row)
+                
+    # Commit the deletions to the database
+    db.session.commit()
 
 def sync_all_bloods():
     """Strictly enforces that the awards perfectly match the current top solvers and configuration."""
