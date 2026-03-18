@@ -3,7 +3,7 @@
 {% block content %}
 <div class="jumbotron">
     <div class="container text-center">
-        <h1>Bloods Configuration</h1>
+        <h1>Bloods Configuration 🩸</h1>
         <p>Manage titles, points, and challenge filters.</p>
     </div>
 </div>
@@ -20,10 +20,25 @@
 
     <form method="POST">
         <input type="hidden" name="nonce" value="{{ Session.nonce }}">
+        
         <div class="row">
             <div class="col-md-8">
+                
                 <div class="card mb-4">
-                    <div class="card-header">Award Settings</div>
+                    <div class="card-header">General Settings</div>
+                    <div class="card-body">
+                        <div class="form-group mb-0">
+                            <label><strong>Number of Blood Positions</strong></label>
+                            <input type="number" class="form-control" name="bloods_max_positions" value="{{ max_positions }}" min="0" required>
+                            <small class="form-text text-muted">
+                                If you increase this number, click "Save" first to generate the new rows below so you can edit them!
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">Award Details</div>
                     <div class="card-body">
                         <table class="table table-borderless">
                             <thead>
@@ -35,25 +50,22 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for i in range(1, 4) %}
+                                {% for i in range(1, max_positions + 1) %}
                                 <tr>
-                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}st{% elif i==2 %}nd{% else %}rd{% endif %} Place</strong></td>
+                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}st{% elif i==2 %}nd{% elif i==3 %}rd{% else %}th{% endif %}</strong></td>
                                     <td>
-                                        <input type="number" class="form-control" name="bloods_bonus_{{ i }}" value="{{ get_config('bloods_bonus_' ~ i) }}" required>
+                                        <input type="number" class="form-control" name="bloods_bonus_{{ i }}" value="{{ get_config('bloods_bonus_' ~ i) or '0' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_title_{{ i }}" value="{{ get_config('bloods_title_' ~ i) }}" required>
+                                        <input type="text" class="form-control" name="bloods_title_{{ i }}" value="{{ get_config('bloods_title_' ~ i) or i ~ 'th Blood' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_icon_{{ i }}" value="{{ get_config('bloods_icon_' ~ i) }}" required>
+                                        <input type="text" class="form-control" name="bloods_icon_{{ i }}" value="{{ get_config('bloods_icon_' ~ i) or 'crown' }}" required>
                                     </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
-                        <small class="form-text text-muted mt-2">
-                            * Note: The icon is the FontAwesome name (e.g., <code>crown</code>, <code>shield</code>, <code>star</code>) used on the user profile badge.
-                        </small>
                     </div>
                 </div>
             </div>
