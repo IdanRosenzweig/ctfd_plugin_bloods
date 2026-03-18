@@ -1,150 +1,152 @@
-from flask import Blueprint, render_template, url_for, send_from_directory
-from flask import current_app as app
-from CTFd.models import db, Challenges, Solves, Awards, Users
-from CTFd.utils.user import get_current_user
-from CTFd.utils.decorators import authed_only, admins_only
-from CTFd.utils.modes import USERS_MODE, TEAMS_MODE
-from CTFd.utils import config, get_config
 import datetime
-import os
+from flask import Blueprint, render_template, request
+from CTFd.models import db, Solves, Awards, Challenges, Users, Teams
+from CTFd.utils import get_config
 
-first_blood = Blueprint(
-    "first_blood",
-    __name__,
-    template_folder="templates",
-    static_folder="static",
-    static_url_path="/plugins/first_blood/static",  # ← this makes /plugins/first_blood/static/... work
-)
+# --- CONFIGURATION ---
+FIRST_BLOOD_BONUS = 20
+# ---------------------
 
-first_blood_value = 20
+
+# 1. Database Model to Track First Blood Holders
+class FirstBlood(db.Model):
+    __tablename__ = "first_bloods"
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(
+        db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE")
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"))
+    award_id = db.Column(db.Integer, db.ForeignKey("awards.id", ondelete="CASCADE"))
+
+
+def sync_all_first_bloods():
+    """Recalculates First Bloods to handle bans, hidden users, and deleted solves."""
+    user_mode = get_config("user_mode")
+    challenges = Challenges.query.all()
+
+    for chal in challenges:
+        # Find the oldest VALID solve (ignoring banned/hidden users)
+        query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
+            Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
+        )
+
+        if user_mode == "teams":
+            query = query.join(Teams, Solves.team_id == Teams.id).filter(
+                Teams.banned == False, Teams.hidden == False
+            )
+
+        first_solve = query.order_by(Solves.date.asc(), Solves.id.asc()).first()
+        tracker = FirstBlood.query.filter_by(challenge_id=chal.id).first()
+
+        if not first_solve:
+            # No valid solves exist. If a tracker/award exists, clean it up.
+            if tracker:
+                award = Awards.query.filter_by(id=tracker.award_id).first()
+                if award:
+                    db.session.delete(award)
+                db.session.delete(tracker)
+                db.session.commit()
+            continue
+
+        if tracker:
+            # If the current tracker matches the valid first solve, move to the next challenge
+            if (
+                tracker.user_id == first_solve.user_id
+                and tracker.team_id == first_solve.team_id
+            ):
+                continue
+            else:
+                # Mismatch! The previous first blood was banned/deleted. Delete old award.
+                award = Awards.query.filter_by(id=tracker.award_id).first()
+                if award:
+                    db.session.delete(award)
+                db.session.delete(tracker)
+                db.session.commit()
+
+        # Issue the new First Blood Award to the correct solver
+        award = Awards(
+            user_id=first_solve.user_id,
+            team_id=first_solve.team_id,
+            name="First Blood Bonus",
+            description=f"First Blood: {chal.name}",
+            value=FIRST_BLOOD_BONUS,
+            category="first_blood",
+            icon="shield",
+        )
+        db.session.add(award)
+        db.session.commit()  # Commit to get the award's ID
+
+        # Track it so we don't duplicate it
+        new_tracker = FirstBlood(
+            challenge_id=chal.id,
+            user_id=first_solve.user_id,
+            team_id=first_solve.team_id,
+            award_id=award.id,
+        )
+        db.session.add(new_tracker)
+        db.session.commit()
 
 
 def load(app):
-    # =============================================
-    #  HOOK: Award first blood when a solve is created
-    # =============================================
-    def award_first_blood(challenge, solve):
-        # Check if this is really the first solve
-        first_solve = (
-            Solves.query.filter_by(challenge_id=challenge.id)
-            .order_by(Solves.date.asc())
-            .first()
-        )
+    # Initialize our custom database table
+    app.db.create_all()
 
-        if first_solve and first_solve.id == solve.id:
-            user = Users.query.filter_by(id=solve.account_id).first()
-            if not user:
-                return
+    # 2. Blueprint for the public First Bloods Page
+    first_blood_bp = Blueprint("first_bloods", __name__, template_folder="templates")
 
-            award = Awards(
-                name=f"First Blood — {challenge.name}",
-                description=f"First to solve {challenge.name}",
-                value=first_blood_value,
-                category="First Blood",
-                icon="first-blood.svg",  # relative to static/
-                user_id=user.id,
-                team_id=user.team_id if config.user_mode() == TEAMS_MODE else None,
-                date=solve.date,
+    @first_blood_bp.route("/first-bloods", methods=["GET"])
+    def first_bloods_page():
+        # Query our tracker table directly, as it is always perfectly in sync
+        bloods_data = FirstBlood.query.all()
+        bloods = []
+
+        for b in bloods_data:
+            chal = Challenges.query.get(b.challenge_id)
+            if not chal or chal.state != "visible":
+                continue
+
+            user = Users.query.get(b.user_id)
+            team = Teams.query.get(b.team_id) if b.team_id else None
+            solve = Solves.query.filter_by(
+                challenge_id=b.challenge_id, user_id=b.user_id
+            ).first()
+
+            bloods.append(
+                {
+                    "challenge_name": chal.name,
+                    "user_name": user.name if user else "Unknown",
+                    "team_name": team.name if team else "None",
+                    "date": solve.date if solve else None,
+                }
             )
-            db.session.add(award)
-            db.session.commit()
 
-    app.events.subscribe("on_challenge_solve", award_first_blood)
-
-    # =============================================
-    #  PUBLIC PAGE: /firstbloods
-    # =============================================
-    @first_blood.route("/firstbloods")
-    def firstbloods():
-        awards = (
-            Awards.query.filter(Awards.category == "First Blood")
-            .order_by(Awards.date.desc())
-            .all()
+        # Sort by date, most recent at the top
+        bloods.sort(
+            key=lambda x: x["date"] if x["date"] else datetime.datetime.min,
+            reverse=True,
         )
+        return render_template("first_bloods.html", bloods=bloods)
 
-        results = []
-        for award in awards:
-            challenge = Challenges.query.get(
-                award.challenge_id
-            )  # may be None if deleted
-            user = Users.query.get(award.user_id)
+    app.register_blueprint(first_blood_bp)
 
-            entry = {
-                "award": award,
-                "challenge": challenge,
-                "user": user,
-                "date": award.date,
-                "challenge_name": (
-                    challenge.name if challenge else "[deleted challenge]"
-                ),
-                "challenge_id": challenge.id if challenge else None,
-                "icon": award.icon or "first-blood.svg",
-            }
-            results.append(entry)
-
-        return render_template(
-            "first_bloods.html",
-            first_bloods=results,
-            user_mode=config.user_mode(),
-            ctf_name=app.config["CTF_NAME"],
-        )
-
-    # =============================================
-    #  ADMIN: Regenerate first bloods (optional)
-    # =============================================
-    @first_blood.route("/admin/firstblood/regenerate", methods=["POST"])
-    @admins_only
-    def regenerate_first_bloods():
-        Awards.query.filter_by(category="First Blood").delete()
-        db.session.commit()
-
-        all_solves = Solves.query.order_by(Solves.date.asc()).all()
-        seen = set()
-
-        for solve in all_solves:
-            chal_id = solve.challenge_id
-            if chal_id in seen:
-                continue
-            challenge = Challenges.query.get(chal_id)
-            if not challenge:
-                continue
-            user = Users.query.get(solve.account_id)
-            if not user:
-                continue
-
-            award = Awards(
-                name=f"First Blood — {challenge.name}",
-                description=f"First to solve {challenge.name}",
-                value=first_blood_value,
-                category="First Blood",
-                icon="first-blood.svg",
-                user_id=user.id,
-                team_id=user.team_id if config.user_mode() == TEAMS_MODE else None,
-                date=solve.date,
-            )
-            db.session.add(award)
-            seen.add(chal_id)
-
-        db.session.commit()
-        return {
-            "success": True,
-            "message": f"Regenerated {len(seen)} first blood awards.",
-        }
-
-    app.register_blueprint(first_blood)
-
-    # Optional: Add menu item
-    def register_menu():
-        return {
-            "text": "First Bloods",
-            "link": url_for("first_blood.firstbloods"),
-            "type": "public",
-            "icon": "fa-trophy",
-        }
-
-    # If your CTFd version supports plugin menu registration:
-    # app.pb.register_menu_item("mainbar", "firstbloods", register_menu)
-
-
-def bless():
-    pass  # Optional migration hook if needed later
+    # 3. Dynamic Background Engine
+    @app.after_request
+    def trigger_first_blood_sync(response):
+        """
+        Runs automatically after any request finishes. We only execute the sync
+        if the request modified a solve, a user, or a team.
+        """
+        if request.method in ["POST", "PATCH", "DELETE"]:
+            path = request.path
+            if (
+                path.startswith("/api/v1/challenges/attempt")
+                or path.startswith("/api/v1/users")
+                or path.startswith("/api/v1/teams")
+                or path.startswith("/api/v1/solves")
+            ):
+                try:
+                    sync_all_first_bloods()
+                except Exception as e:
+                    print(f"[First Blood Plugin] Sync Error: {e}")
+        return response
