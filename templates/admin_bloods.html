@@ -3,15 +3,14 @@
 {% block content %}
 <div class="jumbotron">
     <div class="container text-center">
-        <h1>Bloods Configuration 🩸</h1>
-        <p>Manage titles, points, and challenge filters.</p>
+        <h1>Bloods</h1>
     </div>
 </div>
 
 <div class="container">
     {% if success %}
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <strong>Success!</strong> Settings updated and all awards have been re-synced!
+        <strong>Success!</strong> {{ message }}
         <button type="button" class="close" data-dismiss="alert" aria-label="Close">
             <span aria-hidden="true">&times;</span>
         </button>
@@ -52,7 +51,7 @@
                             <tbody>
                                 {% for i in range(1, max_positions + 1) %}
                                 <tr>
-                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}st{% elif i==2 %}nd{% elif i==3 %}rd{% else %}th{% endif %}</strong></td>
+                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}{% elif i==2 %}{% elif i==3 %}{% else %}{% endif %}</strong></td>
                                     <td>
                                         <input type="number" class="form-control" name="bloods_bonus_{{ i }}" value="{{ get_config('bloods_bonus_' ~ i) or '0' }}" required>
                                     </td>
@@ -93,7 +92,9 @@
 
         <div class="row">
             <div class="col-md-12 text-center mt-3 mb-5">
-                <button type="submit" class="btn btn-primary btn-lg px-5">Save and Re-Sync Database</button>
+                <button type="submit" name="action" value="save" class="btn btn-primary btn-lg px-5">Save and Re-Sync Database</button>
+                
+                <button type="submit" name="action" value="reset" class="btn btn-danger btn-lg px-5 ml-3" onclick="return confirm('Are you sure you want to reset all settings to defaults? This will erase custom points, titles, and filters.');">Reset to Defaults</button>
             </div>
         </div>
     </form>

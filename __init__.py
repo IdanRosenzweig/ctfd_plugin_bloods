@@ -24,6 +24,26 @@ def init_default_configs():
     if get_config("bloods_max_positions") is None:
         set_config("bloods_max_positions", "3")
 
+        defaults = {
+            "bloods_bonus_1": "20",
+            "bloods_bonus_2": "10",
+            "bloods_bonus_3": "5",
+            "bloods_title_1": "First Blood",
+            "bloods_title_2": "Second Blood",
+            "bloods_title_3": "Third Blood",
+            "bloods_icon_1": "crown",
+            "bloods_icon_2": "crown",
+            "bloods_icon_3": "crown",
+            "bloods_filter_mode": "blacklist",
+            "bloods_filter_list": "",
+        }
+        for k, v in defaults.items():
+            set_config(k, v)
+
+def reset_default_configs():
+    """reset the plugin configurations in the DB"""
+    set_config("bloods_max_positions", "3")
+
     defaults = {
         "bloods_bonus_1": "20",
         "bloods_bonus_2": "10",
@@ -35,12 +55,10 @@ def init_default_configs():
         "bloods_icon_2": "crown",
         "bloods_icon_3": "crown",
         "bloods_filter_mode": "blacklist",
-        "bloods_filter_list": "welcome",
+        "bloods_filter_list": "",
     }
     for k, v in defaults.items():
-        if get_config(k) is None:
-            set_config(k, v)
-
+        set_config(k, v)
 
 def sync_all_bloods():
     """Strictly enforces that the awards perfectly match the current top solvers and configuration."""
@@ -172,10 +190,6 @@ def sync_all_bloods():
                 db.session.add(new_tracker)
                 db.session.commit()
 
-    # --- NEW: Purge the scoreboard cache so updates show immediately ---
-    clear_standings()
-    # -------------------------------------------------------------------
-
 
 def load(app):
     app.db.create_all()
@@ -194,16 +208,31 @@ def load(app):
     @admins_only
     def admin_bloods_config():
         if request.method == "POST":
-            for key in request.form:
-                if key.startswith("bloods_"):
-                    set_config(key, request.form[key])
+            # Check which button was clicked
+            action = request.form.get("action")
 
-            sync_all_bloods()
-            return render_template(
-                "admin_bloods.html",
-                success=True,
-                max_positions=int(get_config("bloods_max_positions") or 3),
-            )
+            if action == "reset":
+                reset_default_configs()
+                sync_all_bloods()
+                return render_template(
+                    "admin_bloods.html",
+                    success=True,
+                    message="Settings have been reset to defaults and database re-synced!",
+                    max_positions=int(get_config("bloods_max_positions") or 3),
+                )
+            else:
+                # Normal save action
+                for key in request.form:
+                    if key.startswith("bloods_"):
+                        set_config(key, request.form[key])
+
+                sync_all_bloods()
+                return render_template(
+                    "admin_bloods.html",
+                    success=True,
+                    message="Settings updated and all awards have been re-synced!",
+                    max_positions=int(get_config("bloods_max_positions") or 3),
+                )
 
         # Pass the current max_positions to the template so it knows how many rows to render
         return render_template(
