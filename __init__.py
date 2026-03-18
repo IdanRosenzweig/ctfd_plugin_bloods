@@ -5,29 +5,32 @@ from CTFd.utils import get_config
 from CTFd.plugins import register_user_page_menu_bar
 
 # --- CONFIGURATION ---
-FIRST_BLOOD_BONUS = 20
+# Set the points for 1st, 2nd, and 3rd place
+BLOOD_BONUSES = {
+    1: 20,
+    2: 10,
+    3: 5
+}
 # ---------------------
 
-
-# 1. Database Model to Track First Blood Holders
-class FirstBlood(db.Model):
-    __tablename__ = "first_bloods"
+# 1. Database Model to Track First/Second/Third Blood Holders
+class BloodAward(db.Model):
+    __tablename__ = "blood_awards"  # Changed table name to force a fresh schema creation
     id = db.Column(db.Integer, primary_key=True)
-    challenge_id = db.Column(
-        db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE")
-    )
+    challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE"))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"))
     award_id = db.Column(db.Integer, db.ForeignKey("awards.id", ondelete="CASCADE"))
+    position = db.Column(db.Integer) # Will store 1, 2, or 3
 
 
-def sync_all_first_bloods():
-    """Recalculates First Bloods to handle bans, hidden users, and deleted solves."""
+def sync_all_bloods():
+    """Recalculates Bloods to handle bans, hidden users, and deleted solves."""
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
     for chal in challenges:
-        # Find the oldest VALID solve (ignoring banned/hidden users)
+        # Find the oldest VALID solves (ignoring banned/hidden users)
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
@@ -37,72 +40,74 @@ def sync_all_first_bloods():
                 Teams.banned == False, Teams.hidden == False
             )
 
-        first_solve = query.order_by(Solves.date.asc(), Solves.id.asc()).first()
-        tracker = FirstBlood.query.filter_by(challenge_id=chal.id).first()
+        # Get the top 3 solves
+        top_solves = query.order_by(Solves.date.asc(), Solves.id.asc()).limit(3).all()
+        
+        # Mapping of expected position (1, 2, 3) -> solve object
+        valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
+        
+        # Get all current blood awards for this challenge
+        trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
+        
+        trackers_to_keep = []
 
-        if not first_solve:
-            # No valid solves exist. If a tracker/award exists, clean it up.
-            if tracker:
-                award = Awards.query.filter_by(id=tracker.award_id).first()
-                if award:
-                    db.session.delete(award)
-                db.session.delete(tracker)
-                db.session.commit()
-            continue
-
-        if tracker:
-            # If the current tracker matches the valid first solve, move to the next challenge
-            if (
-                tracker.user_id == first_solve.user_id
-                and tracker.team_id == first_solve.team_id
-            ):
-                continue
+        # 1. Evaluate existing awards. Delete any that no longer match the true top 3.
+        for tracker in trackers:
+            expected_solve = valid_state.get(tracker.position)
+            
+            # If the user/team for this position still matches, keep it.
+            if expected_solve and tracker.user_id == expected_solve.user_id and tracker.team_id == expected_solve.team_id:
+                trackers_to_keep.append(tracker.position)
             else:
-                # Mismatch! The previous first blood was banned/deleted. Delete old award.
+                # Mismatch! (e.g., a solver was deleted or bumped up a rank). Delete old award.
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
                     db.session.delete(award)
                 db.session.delete(tracker)
-                db.session.commit()
-
-        # Issue the new First Blood Award to the correct solver
-        award = Awards(
-            user_id=first_solve.user_id,
-            team_id=first_solve.team_id,
-            name="First Blood Bonus",
-            description=f"First Blood: {chal.name}",
-            value=FIRST_BLOOD_BONUS,
-            category="first_blood",
-            icon="shield",
-        )
-        db.session.add(award)
-        db.session.commit()  # Commit to get the award's ID
-
-        # Track it so we don't duplicate it
-        new_tracker = FirstBlood(
-            challenge_id=chal.id,
-            user_id=first_solve.user_id,
-            team_id=first_solve.team_id,
-            award_id=award.id,
-        )
-        db.session.add(new_tracker)
+                
         db.session.commit()
+
+        # 2. Issue new awards for positions that are missing
+        for pos, solve in valid_state.items():
+            if pos not in trackers_to_keep:
+                
+                titles = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
+                icons = {1: "shield", 2: "crosshairs", 3: "star"}
+                
+                # Issue the Award to the user's profile
+                award = Awards(
+                    user_id=solve.user_id,
+                    team_id=solve.team_id,
+                    name=titles[pos],
+                    description=f"{titles[pos]}: {chal.name}",
+                    value=BLOOD_BONUSES[pos],
+                    icon=icons[pos],
+                )
+                db.session.add(award)
+                db.session.commit()  # Commit to get the award's ID
+
+                # Track it in our plugin table
+                new_tracker = BloodAward(
+                    challenge_id=chal.id,
+                    user_id=solve.user_id,
+                    team_id=solve.team_id,
+                    award_id=award.id,
+                    position=pos
+                )
+                db.session.add(new_tracker)
+                db.session.commit()
 
 
 def load(app):
-    # Initialize our custom database table
     app.db.create_all()
     
-    # --- NEW: Add the link to the main navigation menu automatically ---
     register_user_page_menu_bar("First Bloods", "/first-bloods")
 
-    # 2. Blueprint for the public First Bloods Page
     first_blood_bp = Blueprint("first_bloods", __name__, template_folder="templates")
 
     @first_blood_bp.route("/first-bloods", methods=["GET"])
     def first_bloods_page():
-        # Query our tracker table directly, as it is always perfectly in sync
-        bloods_data = FirstBlood.query.all()
+        bloods_data = BloodAward.query.all()
         bloods = []
 
         for b in bloods_data:
@@ -122,10 +127,11 @@ def load(app):
                     "user_name": user.name if user else "Unknown",
                     "team_name": team.name if team else "None",
                     "date": solve.date if solve else None,
+                    "position": b.position # Added the rank so the template can display it
                 }
             )
 
-        # Sort by date, most recent at the top
+        # Sort by date descending (newest activity at the top)
         bloods.sort(
             key=lambda x: x["date"] if x["date"] else datetime.datetime.min,
             reverse=True,
@@ -134,13 +140,8 @@ def load(app):
 
     app.register_blueprint(first_blood_bp)
 
-    # 3. Dynamic Background Engine
     @app.after_request
     def trigger_first_blood_sync(response):
-        """
-        Runs automatically after any request finishes. We only execute the sync
-        if the request modified a solve, a user, or a team.
-        """
         if request.method in ["POST", "PATCH", "DELETE"]:
             path = request.path
             if (
@@ -150,7 +151,7 @@ def load(app):
                 or path.startswith("/api/v1/solves")
             ):
                 try:
-                    sync_all_first_bloods()
+                    sync_all_bloods()
                 except Exception as e:
                     print(f"[First Blood Plugin] Sync Error: {e}")
         return response
