@@ -2,6 +2,7 @@ import datetime
 from flask import Blueprint, render_template, request
 from CTFd.models import db, Solves, Awards, Challenges, Users, Teams
 from CTFd.utils import get_config
+from CTFd.plugins import register_user_page_menu_bar
 
 # --- CONFIGURATION ---
 FIRST_BLOOD_BONUS = 20
@@ -91,6 +92,9 @@ def sync_all_first_bloods():
 def load(app):
     # Initialize our custom database table
     app.db.create_all()
+    
+    # --- NEW: Add the link to the main navigation menu automatically ---
+    register_user_page_menu_bar("First Bloods", "/first-bloods")
 
     # 2. Blueprint for the public First Bloods Page
     first_blood_bp = Blueprint("first_bloods", __name__, template_folder="templates")
