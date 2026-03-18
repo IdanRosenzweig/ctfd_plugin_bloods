@@ -4,7 +4,6 @@
 <div class="jumbotron">
     <div class="container text-center">
         <h1>First Bloods</h1>
-        <p>The fastest hackers on the board.</p>
     </div>
 </div>
 
@@ -14,16 +13,16 @@
             <table class="table table-striped">
                 <thead>
                     <tr>
-                        <th>Challenge</th>
-                        <th>User</th>
-                        <th>Team</th>
-                        <th>Time Achieved</th>
+                        <td><b>Challenge</b></td>
+                        <td><b>User</b></td>
+                        <td><b>Team</b></td>
+                        <td><b>Time Achieved</b></td>
                     </tr>
                 </thead>
                 <tbody>
                     {% for blood in bloods %}
                     <tr>
-                        <td><strong>{{ blood.challenge_name }}</strong></td>
+                        <td>{{ blood.challenge_name }}</td>
                         <td>{{ blood.user_name }}</td>
                         <td>{{ blood.team_name }}</td>
                         <td class="blood-time" data-time="{{ blood.date.isoformat() }}Z">
