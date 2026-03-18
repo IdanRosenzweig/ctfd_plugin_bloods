@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="jumbotron">
+    <div class="container text-center">
+        <h1>Bloods Configuration</h1>
+        <p>Manage titles, points, and challenge filters.</p>
+    </div>
+</div>
+
+<div class="container">
+    {% if success %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <strong>Success!</strong> Settings updated and all awards have been re-synced!
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+    {% endif %}
+
+    <form method="POST">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">Award Settings</div>
+                    <div class="card-body">
+                        <table class="table table-borderless">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Bonus Points</th>
+                                    <th>Award Title</th>
+                                    <th>FontAwesome Icon</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for i in range(1, 4) %}
+                                <tr>
+                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}st{% elif i==2 %}nd{% else %}rd{% endif %} Place</strong></td>
+                                    <td>
+                                        <input type="number" class="form-control" name="bloods_bonus_{{ i }}" value="{{ get_config('bloods_bonus_' ~ i) }}" required>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control" name="bloods_title_{{ i }}" value="{{ get_config('bloods_title_' ~ i) }}" required>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control" name="bloods_icon_{{ i }}" value="{{ get_config('bloods_icon_' ~ i) }}" required>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <small class="form-text text-muted mt-2">
+                            * Note: The icon is the FontAwesome name (e.g., <code>crown</code>, <code>shield</code>, <code>star</code>) used on the user profile badge.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">Challenge Filters</div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Filter Mode</label>
+                            <select class="form-control" name="bloods_filter_mode">
+                                <option value="blacklist" {% if get_config('bloods_filter_mode') == 'blacklist' %}selected{% endif %}>Blacklist (Exclude specific)</option>
+                                <option value="whitelist" {% if get_config('bloods_filter_mode') == 'whitelist' %}selected{% endif %}>Whitelist (Only include specific)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Challenge Names</label>
+                            <textarea class="form-control" name="bloods_filter_list" rows="5" placeholder="welcome, sanity check, rules">{{ get_config('bloods_filter_list') }}</textarea>
+                            <small class="form-text text-muted">Separate multiple challenge names with a comma.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 text-center mt-3 mb-5">
+                <button type="submit" class="btn btn-primary btn-lg px-5">Save and Re-Sync Database</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

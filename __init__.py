@@ -1,22 +1,9 @@
 import datetime
 from flask import Blueprint, render_template, request
 from CTFd.models import db, Solves, Awards, Challenges, Users, Teams
-from CTFd.utils import get_config
-from CTFd.plugins import register_user_page_menu_bar
-
-# --- CONFIGURATION ---
-# Set the points for 1st, 2nd, and 3rd place
-BLOODS_BONUSES = {1: 20, 2: 10, 3: 5}
-
-# Set the titles and icons for 1st, 2nd, and 3rd place
-TITLES = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
-ICONS = {1: "crown", 2: "crown", 3: "crown"}
-
-# filter challenge
-FILTER_MODE = "blacklist"
-FILTER_BLACKLIST = ["welcome"]
-FILTER_WHITELIST = []
-# ---------------------
+from CTFd.utils import get_config, set_config
+from CTFd.utils.decorators import admins_only
+from CTFd.plugins import register_user_page_menu_bar, register_admin_plugin_menu_bar
 
 
 class BloodAward(db.Model):
@@ -31,22 +18,63 @@ class BloodAward(db.Model):
     position = db.Column(db.Integer)
 
 
+def init_default_configs():
+    """Sets the default plugin configurations in the DB if they don't exist yet."""
+    defaults = {
+        "bloods_bonus_1": "20",
+        "bloods_bonus_2": "10",
+        "bloods_bonus_3": "5",
+        "bloods_title_1": "First Blood",
+        "bloods_title_2": "Second Blood",
+        "bloods_title_3": "Third Blood",
+        "bloods_icon_1": "crown",
+        "bloods_icon_2": "crown",
+        "bloods_icon_3": "crown",
+        "bloods_filter_mode": "blacklist",
+        "bloods_filter_list": "welcome",
+    }
+    for k, v in defaults.items():
+        if get_config(k) is None:
+            set_config(k, v)
+
+
 def sync_all_bloods():
     """Strictly enforces that the awards perfectly match the current top 3 solvers and configuration."""
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
+    # Read live configurations from the database
+    bonuses = {
+        1: int(get_config("bloods_bonus_1") or 0),
+        2: int(get_config("bloods_bonus_2") or 0),
+        3: int(get_config("bloods_bonus_3") or 0),
+    }
+    titles = {
+        1: get_config("bloods_title_1"),
+        2: get_config("bloods_title_2"),
+        3: get_config("bloods_title_3"),
+    }
+    icons = {
+        1: get_config("bloods_icon_1"),
+        2: get_config("bloods_icon_2"),
+        3: get_config("bloods_icon_3"),
+    }
+
+    filter_mode = get_config("bloods_filter_mode")
+    filter_raw = get_config("bloods_filter_list") or ""
+    # Convert comma-separated string into a clean list of challenge names
+    filter_list = [name.strip() for name in filter_raw.split(",") if name.strip()]
+
     for chal in challenges:
         chal_has_blood: bool = False
-        if FILTER_MODE == "blacklist":
-            chal_has_blood = chal.name not in FILTER_BLACKLIST
-        elif FILTER_MODE == "whitelist":
-            chal_has_blood = chal.name in FILTER_WHITELIST
+        if filter_mode == "blacklist":
+            chal_has_blood = chal.name not in filter_list
+        elif filter_mode == "whitelist":
+            chal_has_blood = chal.name in filter_list
         else:
-            raise ValueError(f"Invalid FILTER_MODE: {FILTER_MODE}. Must be 'whitelist' or 'blacklist'.")
+            raise ValueError(f"Invalid filter mode: {filter_mode}")
 
         if not chal_has_blood:
-            # delete any existing blood awards for this chal
             trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
             for tracker in trackers:
                 award = Awards.query.filter_by(id=tracker.award_id).first()
@@ -54,13 +82,13 @@ def sync_all_bloods():
                     db.session.delete(award)
                 db.session.delete(tracker)
             db.session.commit()
-            continue # Skip the rest of the logic and move to the next challenge
-        
+            continue
+
         # 1. Find the true, valid top 3 solves for this challenge
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
-        
+
         if user_mode == "teams":
             query = query.join(Teams, Solves.team_id == Teams.id).filter(
                 Teams.banned == False, Teams.hidden == False
@@ -82,20 +110,17 @@ def sync_all_bloods():
                 and tracker.user_id == expected_solve.user_id
                 and tracker.team_id == expected_solve.team_id
             ):
-                # The solver is correct! Let's rigorously update the award details to match the config
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
-                    award.name = TITLES[tracker.position]
+                    award.name = titles[tracker.position]
                     award.description = f"{chal.name}"
-                    award.value = BLOODS_BONUSES.get(tracker.position, 0)
-                    award.icon = ICONS[tracker.position]
+                    award.value = bonuses[tracker.position]
+                    award.icon = icons[tracker.position]
                     award.date = expected_solve.date
                     valid_positions_kept.append(tracker.position)
                 else:
-                    # The award was manually deleted by an admin, but the tracker remains. Delete tracker.
                     db.session.delete(tracker)
             else:
-                # Mismatch! The solver was banned, deleted, or bumped rank. Delete the award and the tracker.
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
                     db.session.delete(award)
@@ -106,19 +131,18 @@ def sync_all_bloods():
         # 4. Issue missing awards for any position that isn't perfectly tracked
         for pos, solve in valid_state.items():
             if pos not in valid_positions_kept:
-                # Create the physical award on the user's profile
                 award = Awards(
                     user_id=solve.user_id,
                     team_id=solve.team_id,
-                    name=TITLES[pos],
+                    name=titles[pos],
                     description=f"{chal.name}",
-                    value=BLOODS_BONUSES.get(pos, 0),
-                    icon=ICONS[pos],
+                    value=bonuses[pos],
+                    icon=icons[pos],
+                    date=solve.date,
                 )
                 db.session.add(award)
-                db.session.commit()  # Commit to get the award's ID
+                db.session.commit()
 
-                # Track it so we know exactly who has it
                 new_tracker = BloodAward(
                     challenge_id=chal.id,
                     user_id=solve.user_id,
@@ -133,17 +157,36 @@ def sync_all_bloods():
 def load(app):
     app.db.create_all()
 
-    # run an initial sync right when the server starts
     with app.app_context():
         try:
+            init_default_configs()
             sync_all_bloods()
             print("[Bloods Plugin] Initial sync completed successfully on startup!")
         except Exception as e:
             print(f"[Bloods Plugin] Initial sync failed during startup: {e}")
 
-    # the bloods page
     bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
+    # --- ADMIN CONFIGURATION ROUTE ---
+    @bloods_bp.route("/admin/bloods", methods=["GET", "POST"])
+    @admins_only
+    def admin_bloods_config():
+        if request.method == "POST":
+            # Save all the form inputs into the database
+            for key in request.form:
+                if key.startswith("bloods_"):
+                    set_config(key, request.form[key])
+
+            # Re-sync to immediately apply the changes!
+            sync_all_bloods()
+
+            return render_template("admin_bloods.html", success=True)
+
+        return render_template("admin_bloods.html")
+
+    # ----------------------------------
+
+    # --- PUBLIC BLOODS ROUTE ---
     @bloods_bp.route("/bloods", methods=["GET"])
     def bloods_page():
         bloods_data = BloodAward.query.all()
@@ -173,18 +216,20 @@ def load(app):
                 }
             )
 
-        # Sort by date descending
         bloods.sort(
             key=lambda x: x["date"] if x["date"] else datetime.datetime.min,
             reverse=True,
         )
         return render_template("bloods.html", bloods=bloods)
 
+    # ---------------------------
+
     app.register_blueprint(bloods_bp)
 
+    # Register menus
     register_user_page_menu_bar("Bloods", "/bloods")
+    register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
 
-    # update the bloods after each request that could have affected
     @app.after_request
     def trigger_bloods_sync(response):
         if request.method in ["POST", "PATCH", "DELETE"]:
