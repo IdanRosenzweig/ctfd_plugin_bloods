@@ -22,9 +22,9 @@ class BloodAward(db.Model):
 def init_default_configs():
     """sets the default plugin config if it doesn't exist yet"""
     
-    if get_config("bloods_max_positions") is None:
+    if get_config("bloods_no_bloods") is None:
         # default number of blood positions
-        set_config("bloods_max_positions", "3")
+        set_config("bloods_no_bloods", "3")
 
         # default bloods parameters
         defaults = {
@@ -50,7 +50,7 @@ def reset_default_configs():
     """resets the plugin config"""
     
     # default number of blood positions
-    set_config("bloods_max_positions", "3")
+    set_config("bloods_no_bloods", "3")
 
     # default bloods parameters
     defaults = {
@@ -91,13 +91,14 @@ def sync_all_bloods():
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
-    max_positions = int(get_config("bloods_max_positions") or 3)
+
+    no_bloods = int(get_config("bloods_no_bloods") or 3)
 
     bonuses = {}
     titles = {}
     icons = {}
 
-    for i in range(1, max_positions + 1):
+    for i in range(1, no_bloods + 1):
         bonuses[i] = int(get_config(f"bloods_bonus_{i}") or 0)
 
         default_title = (
@@ -146,7 +147,7 @@ def sync_all_bloods():
 
         top_solves = (
             query.order_by(Solves.date.asc(), Solves.id.asc())
-            .limit(max_positions)
+            .limit(no_bloods)
             .all()
         )
         valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
@@ -155,7 +156,7 @@ def sync_all_bloods():
         valid_positions_kept = []
 
         for tracker in trackers:
-            if tracker.position > max_positions:
+            if tracker.position > no_bloods:
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
                     db.session.delete(award)
@@ -240,7 +241,7 @@ def load(app):
                     "admin_bloods.html",
                     success=True,
                     message="Settings have been reset to defaults and database re-synced!",
-                    max_positions=int(get_config("bloods_max_positions") or 3),
+                    no_bloods=int(get_config("bloods_no_bloods") or 3),
                 )
             else:
                 # Normal save action
@@ -253,13 +254,13 @@ def load(app):
                     "admin_bloods.html",
                     success=True,
                     message="Settings updated and all awards have been re-synced!",
-                    max_positions=int(get_config("bloods_max_positions") or 3),
+                    no_bloods=int(get_config("bloods_no_bloods") or 3),
                 )
 
-        # Pass the current max_positions to the template so it knows how many rows to render
+        # Pass the current no_bloods to the template so it knows how many rows to render
         return render_template(
             "admin_bloods.html",
-            max_positions=int(get_config("bloods_max_positions") or 3),
+            no_bloods=int(get_config("bloods_no_bloods") or 3),
         )
 
     register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")

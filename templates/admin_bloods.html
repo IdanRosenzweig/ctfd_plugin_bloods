@@ -27,8 +27,8 @@
                     <div class="card-header">General Settings</div>
                     <div class="card-body">
                         <div class="form-group mb-0">
-                            <label><strong>Number of Blood Positions</strong></label>
-                            <input type="number" class="form-control" name="bloods_max_positions" value="{{ max_positions }}" min="0" required>
+                            <label><strong>Number of Bloods</strong></label>
+                            <input type="number" class="form-control" name="bloods_no_bloods" value="{{ no_bloods }}" min="0" required>
                             <small class="form-text text-muted">
                                 If you increase this number, click "Save" first to generate the new rows below so you can edit them!
                             </small>
@@ -49,7 +49,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for i in range(1, max_positions + 1) %}
+                                {% for i in range(1, no_bloods + 1) %}
                                 <tr>
                                     <td class="align-middle"><strong>{{ i }}{% if i==1 %}{% elif i==2 %}{% elif i==3 %}{% else %}{% endif %}</strong></td>
                                     <td>
