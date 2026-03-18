@@ -91,9 +91,10 @@ def sync_all_bloods():
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
-
+    # retrieve no_bloods
     no_bloods = int(get_config("bloods_no_bloods") or 3)
 
+    # retrieve the current config
     bonuses = {}
     titles = {}
     icons = {}
@@ -117,7 +118,10 @@ def sync_all_bloods():
     filter_raw = get_config("bloods_filter_list") or ""
     filter_list = [name.strip() for name in filter_raw.split(",") if name.strip()]
 
+    # sync bloods for each chal
     for chal in challenges:
+      
+      # check if this chal has blood
         chal_has_blood: bool = False
         if filter_mode == "blacklist":
             chal_has_blood = chal.name not in filter_list
@@ -126,6 +130,7 @@ def sync_all_bloods():
         else:
             raise ValueError(f"Invalid filter mode: {filter_mode}")
 
+        # chal doesn't have blood, destroy any existing awards (if it has any)
         if not chal_has_blood:
             trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
             for tracker in trackers:
@@ -136,6 +141,7 @@ def sync_all_bloods():
             db.session.commit()
             continue
 
+        # find the solutions for this chal
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
@@ -145,16 +151,19 @@ def sync_all_bloods():
                 Teams.banned == False, Teams.hidden == False
             )
 
+        # find the top solutions (the first solutions)
         top_solves = (
             query.order_by(Solves.date.asc(), Solves.id.asc())
             .limit(no_bloods)
             .all()
         )
+        
         valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
 
         trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
         valid_positions_kept = []
 
+        # destroy or update existing awards
         for tracker in trackers:
             if tracker.position > no_bloods:
                 award = Awards.query.filter_by(id=tracker.award_id).first()
@@ -188,6 +197,7 @@ def sync_all_bloods():
 
         db.session.commit()
 
+        # add missing awards
         for pos, solve in valid_state.items():
             if pos not in valid_positions_kept:
                 award = Awards(
