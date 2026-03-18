@@ -8,6 +8,7 @@ from CTFd.utils.modes import USERS_MODE, TEAMS_MODE
 from CTFd.utils import config
 import datetime
 
+FIRST_BLOOD_VALUE=20
 
 def load(app):
     first_blood = Blueprint("first_blood", __name__)
@@ -32,7 +33,7 @@ def load(app):
             award = Awards(
                 name=f"First Blood — {challenge.name}",
                 description=f"First to solve {challenge.name}",
-                value=app.config.get("FIRST_BLOOD_VALUE", 50),
+                value=FIRST_BLOOD_VALUE,
                 category="First Blood",
                 icon=f"/plugins/first_blood/static/first-blood.svg",
                 user_id=user.id,
@@ -113,7 +114,7 @@ def load(app):
             award = Awards(
                 name=f"First Blood — {challenge.name}",
                 description=f"First to solve {challenge.name}",
-                value=app.config.get("FIRST_BLOOD_VALUE", 50),
+                value=FIRST_BLOOD_VALUE,
                 category="First Blood",
                 icon="/plugins/first_blood/static/first-blood.svg",
                 user_id=user.id,
