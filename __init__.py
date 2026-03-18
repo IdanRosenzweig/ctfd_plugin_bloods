@@ -59,7 +59,7 @@ def sync_all_bloods():
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
                     award.name = TITLES[tracker.position]
-                    award.description = f"{TITLES[tracker.position]}: {chal.name}"
+                    award.description = f"{chal.name}"
                     award.value = BLOODS_BONUSES.get(tracker.position, 0)
                     award.icon = ICONS[tracker.position]
                     valid_positions_kept.append(tracker.position)
@@ -83,7 +83,7 @@ def sync_all_bloods():
                     user_id=solve.user_id,
                     team_id=solve.team_id,
                     name=TITLES[pos],
-                    description=f"{TITLES[pos]}: {chal.name}",
+                    description=f"{chal.name}",
                     value=BLOODS_BONUSES.get(pos, 0),
                     icon=ICONS[pos],
                 )
