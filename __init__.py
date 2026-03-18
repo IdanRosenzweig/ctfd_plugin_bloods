@@ -4,6 +4,7 @@ from CTFd.models import db, Solves, Awards, Challenges, Users, Teams
 from CTFd.utils import get_config, set_config
 from CTFd.utils.decorators import admins_only
 from CTFd.plugins import register_user_page_menu_bar, register_admin_plugin_menu_bar
+from CTFd.cache import clear_standings  # <-- Added cache clearer
 
 
 class BloodAward(db.Model):
@@ -20,6 +21,9 @@ class BloodAward(db.Model):
 
 def init_default_configs():
     """Sets the default plugin configurations in the DB if they don't exist yet."""
+    if get_config("bloods_max_positions") is None:
+        set_config("bloods_max_positions", "3")
+
     defaults = {
         "bloods_bonus_1": "20",
         "bloods_bonus_2": "10",
@@ -39,30 +43,36 @@ def init_default_configs():
 
 
 def sync_all_bloods():
-    """Strictly enforces that the awards perfectly match the current top 3 solvers and configuration."""
+    """Strictly enforces that the awards perfectly match the current top solvers and configuration."""
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
-    # Read live configurations from the database
-    bonuses = {
-        1: int(get_config("bloods_bonus_1") or 0),
-        2: int(get_config("bloods_bonus_2") or 0),
-        3: int(get_config("bloods_bonus_3") or 0),
-    }
-    titles = {
-        1: get_config("bloods_title_1"),
-        2: get_config("bloods_title_2"),
-        3: get_config("bloods_title_3"),
-    }
-    icons = {
-        1: get_config("bloods_icon_1"),
-        2: get_config("bloods_icon_2"),
-        3: get_config("bloods_icon_3"),
-    }
+    # Get max positions dynamically
+    max_positions = int(get_config("bloods_max_positions") or 3)
+
+    # Dynamically build configuration dictionaries for up to max_positions
+    bonuses = {}
+    titles = {}
+    icons = {}
+
+    for i in range(1, max_positions + 1):
+        bonuses[i] = int(get_config(f"bloods_bonus_{i}") or 0)
+
+        # Create sensible default names if an admin expands the list but hasn't set names yet
+        default_title = (
+            "First Blood"
+            if i == 1
+            else (
+                "Second Blood"
+                if i == 2
+                else "Third Blood" if i == 3 else f"{i}th Blood"
+            )
+        )
+        titles[i] = get_config(f"bloods_title_{i}") or default_title
+        icons[i] = get_config(f"bloods_icon_{i}") or "crown"
 
     filter_mode = get_config("bloods_filter_mode")
     filter_raw = get_config("bloods_filter_list") or ""
-    # Convert comma-separated string into a clean list of challenge names
     filter_list = [name.strip() for name in filter_raw.split(",") if name.strip()]
 
     for chal in challenges:
@@ -84,7 +94,6 @@ def sync_all_bloods():
             db.session.commit()
             continue
 
-        # 1. Find the true, valid top 3 solves for this challenge
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
@@ -94,15 +103,26 @@ def sync_all_bloods():
                 Teams.banned == False, Teams.hidden == False
             )
 
-        top_solves = query.order_by(Solves.date.asc(), Solves.id.asc()).limit(3).all()
+        # Dynamic Limit based on max_positions
+        top_solves = (
+            query.order_by(Solves.date.asc(), Solves.id.asc())
+            .limit(max_positions)
+            .all()
+        )
         valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
 
-        # 2. Grab all currently tracked awards for this challenge
         trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
         valid_positions_kept = []
 
-        # 3. Aggressively clean up or update existing awards
         for tracker in trackers:
+            # NEW: If admin reduced max_positions (e.g., 3 down to 1), delete out-of-bounds awards
+            if tracker.position > max_positions:
+                award = Awards.query.filter_by(id=tracker.award_id).first()
+                if award:
+                    db.session.delete(award)
+                db.session.delete(tracker)
+                continue
+
             expected_solve = valid_state.get(tracker.position)
 
             if (
@@ -128,7 +148,6 @@ def sync_all_bloods():
 
         db.session.commit()
 
-        # 4. Issue missing awards for any position that isn't perfectly tracked
         for pos, solve in valid_state.items():
             if pos not in valid_positions_kept:
                 award = Awards(
@@ -153,6 +172,10 @@ def sync_all_bloods():
                 db.session.add(new_tracker)
                 db.session.commit()
 
+    # --- NEW: Purge the scoreboard cache so updates show immediately ---
+    clear_standings()
+    # -------------------------------------------------------------------
+
 
 def load(app):
     app.db.create_all()
@@ -167,26 +190,27 @@ def load(app):
 
     bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
-    # --- ADMIN CONFIGURATION ROUTE ---
     @bloods_bp.route("/admin/bloods", methods=["GET", "POST"])
     @admins_only
     def admin_bloods_config():
         if request.method == "POST":
-            # Save all the form inputs into the database
             for key in request.form:
                 if key.startswith("bloods_"):
                     set_config(key, request.form[key])
 
-            # Re-sync to immediately apply the changes!
             sync_all_bloods()
+            return render_template(
+                "admin_bloods.html",
+                success=True,
+                max_positions=int(get_config("bloods_max_positions") or 3),
+            )
 
-            return render_template("admin_bloods.html", success=True)
+        # Pass the current max_positions to the template so it knows how many rows to render
+        return render_template(
+            "admin_bloods.html",
+            max_positions=int(get_config("bloods_max_positions") or 3),
+        )
 
-        return render_template("admin_bloods.html")
-
-    # ----------------------------------
-
-    # --- PUBLIC BLOODS ROUTE ---
     @bloods_bp.route("/bloods", methods=["GET"])
     def bloods_page():
         bloods_data = BloodAward.query.all()
@@ -222,11 +246,8 @@ def load(app):
         )
         return render_template("bloods.html", bloods=bloods)
 
-    # ---------------------------
-
     app.register_blueprint(bloods_bp)
 
-    # Register menus
     register_user_page_menu_bar("Bloods", "/bloods")
     register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
 
