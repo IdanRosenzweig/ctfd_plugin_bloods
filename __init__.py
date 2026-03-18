@@ -62,6 +62,7 @@ def sync_all_bloods():
                     award.description = f"{chal.name}"
                     award.value = BLOODS_BONUSES.get(tracker.position, 0)
                     award.icon = ICONS[tracker.position]
+                    award.date = expected_solve.date
                     valid_positions_kept.append(tracker.position)
                 else:
                     # The award was manually deleted by an admin, but the tracker remains. Delete tracker.
@@ -105,6 +106,14 @@ def sync_all_bloods():
 def load(app):
     app.db.create_all()
     
+    # un an initial sync right when the server starts
+    with app.app_context():
+        try:
+            sync_all_bloods()
+            print("[Bloods Plugin] Initial sync completed successfully on startup!")
+        except Exception as e:
+            print(f"[Bloods Plugin] Initial sync failed during startup: {e}")
+    
     # the bloods page
     bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
@@ -146,8 +155,7 @@ def load(app):
 
     app.register_blueprint(bloods_bp)
 
-    # register the bloods page in the menu bar
-    register_user_page_menu_bar("Bloods", "/bloods")
+    register_user_page_menu_bar("Bloods", "/bloods") # register the bloods page in the menu bar
 
     # update the bloods after each request that could have affected
     @app.after_request
@@ -165,3 +173,5 @@ def load(app):
                 except Exception as e:
                     print(f"[Bloods Plugin] Sync Error: {e}")
         return response
+    
+    
