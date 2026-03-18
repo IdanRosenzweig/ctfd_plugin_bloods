@@ -6,31 +6,34 @@ from CTFd.plugins import register_user_page_menu_bar
 
 # --- CONFIGURATION ---
 # Set the points for 1st, 2nd, and 3rd place
-BLOOD_BONUSES = {
+BLOODS_BONUSES = {
     1: 20,
     2: 10,
     3: 5
 }
+
+# Set the titles and icons for 1st, 2nd, and 3rd place
+TITLES = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
+ICONS = {1: "shield", 2: "crosshairs", 3: "star"}
 # ---------------------
 
-# 1. Database Model to Track First/Second/Third Blood Holders
 class BloodAward(db.Model):
-    __tablename__ = "blood_awards"  # Changed table name to force a fresh schema creation
+    __tablename__ = "blood_awards"
     id = db.Column(db.Integer, primary_key=True)
     challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE"))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"))
     award_id = db.Column(db.Integer, db.ForeignKey("awards.id", ondelete="CASCADE"))
-    position = db.Column(db.Integer) # Will store 1, 2, or 3
+    position = db.Column(db.Integer)
 
 
 def sync_all_bloods():
-    """Recalculates Bloods to handle bans, hidden users, and deleted solves."""
+    """Strictly enforces that the awards perfectly match the current top 3 solvers and configuration."""
     user_mode = get_config("user_mode")
     challenges = Challenges.query.all()
 
     for chal in challenges:
-        # Find the oldest VALID solves (ignoring banned/hidden users)
+        # 1. Find the true, valid top 3 solves for this challenge
         query = Solves.query.join(Users, Solves.user_id == Users.id).filter(
             Solves.challenge_id == chal.id, Users.banned == False, Users.hidden == False
         )
@@ -40,26 +43,31 @@ def sync_all_bloods():
                 Teams.banned == False, Teams.hidden == False
             )
 
-        # Get the top 3 solves
         top_solves = query.order_by(Solves.date.asc(), Solves.id.asc()).limit(3).all()
-        
-        # Mapping of expected position (1, 2, 3) -> solve object
         valid_state = {i + 1: solve for i, solve in enumerate(top_solves)}
         
-        # Get all current blood awards for this challenge
+        # 2. Grab all currently tracked awards for this challenge
         trackers = BloodAward.query.filter_by(challenge_id=chal.id).all()
-        
-        trackers_to_keep = []
+        valid_positions_kept = []
 
-        # 1. Evaluate existing awards. Delete any that no longer match the true top 3.
+        # 3. Aggressively clean up or update existing awards
         for tracker in trackers:
             expected_solve = valid_state.get(tracker.position)
             
-            # If the user/team for this position still matches, keep it.
             if expected_solve and tracker.user_id == expected_solve.user_id and tracker.team_id == expected_solve.team_id:
-                trackers_to_keep.append(tracker.position)
+                # The solver is correct! Let's rigorously update the award details to match the config
+                award = Awards.query.filter_by(id=tracker.award_id).first()
+                if award:
+                    award.name = TITLES[tracker.position]
+                    award.description = f"{TITLES[tracker.position]}: {chal.name}"
+                    award.value = BLOODS_BONUSES.get(tracker.position, 0)
+                    award.icon = ICONS[tracker.position]
+                    valid_positions_kept.append(tracker.position)
+                else:
+                    # The award was manually deleted by an admin, but the tracker remains. Delete tracker.
+                    db.session.delete(tracker)
             else:
-                # Mismatch! (e.g., a solver was deleted or bumped up a rank). Delete old award.
+                # Mismatch! The solver was banned, deleted, or bumped rank. Delete the award and the tracker.
                 award = Awards.query.filter_by(id=tracker.award_id).first()
                 if award:
                     db.session.delete(award)
@@ -67,26 +75,22 @@ def sync_all_bloods():
                 
         db.session.commit()
 
-        # 2. Issue new awards for positions that are missing
+        # 4. Issue missing awards for any position that isn't perfectly tracked
         for pos, solve in valid_state.items():
-            if pos not in trackers_to_keep:
-                
-                titles = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
-                icons = {1: "shield", 2: "crosshairs", 3: "star"}
-                
-                # Issue the Award to the user's profile
+            if pos not in valid_positions_kept:
+                # Create the physical award on the user's profile
                 award = Awards(
                     user_id=solve.user_id,
                     team_id=solve.team_id,
-                    name=titles[pos],
-                    description=f"{titles[pos]}: {chal.name}",
-                    value=BLOOD_BONUSES[pos],
-                    icon=icons[pos],
+                    name=TITLES[pos],
+                    description=f"{TITLES[pos]}: {chal.name}",
+                    value=BLOODS_BONUSES.get(pos, 0),
+                    icon=ICONS[pos],
                 )
                 db.session.add(award)
                 db.session.commit()  # Commit to get the award's ID
 
-                # Track it in our plugin table
+                # Track it so we know exactly who has it
                 new_tracker = BloodAward(
                     challenge_id=chal.id,
                     user_id=solve.user_id,
@@ -101,12 +105,11 @@ def sync_all_bloods():
 def load(app):
     app.db.create_all()
     
-    register_user_page_menu_bar("First Bloods", "/first-bloods")
+    # the bloods page
+    bloods_bp = Blueprint("bloods", __name__, template_folder="templates")
 
-    first_blood_bp = Blueprint("first_bloods", __name__, template_folder="templates")
-
-    @first_blood_bp.route("/first-bloods", methods=["GET"])
-    def first_bloods_page():
+    @bloods_bp.route("/bloods", methods=["GET"])
+    def bloods_page():
         bloods_data = BloodAward.query.all()
         bloods = []
 
@@ -127,21 +130,25 @@ def load(app):
                     "user_name": user.name if user else "Unknown",
                     "team_name": team.name if team else "None",
                     "date": solve.date if solve else None,
-                    "position": b.position # Added the rank so the template can display it
+                    "position": b.position
                 }
             )
 
-        # Sort by date descending (newest activity at the top)
+        # Sort by date descending
         bloods.sort(
             key=lambda x: x["date"] if x["date"] else datetime.datetime.min,
             reverse=True,
         )
-        return render_template("first_bloods.html", bloods=bloods)
+        return render_template("bloods.html", bloods=bloods)
 
-    app.register_blueprint(first_blood_bp)
+    app.register_blueprint(bloods_bp)
 
+    # register the bloods page in the menu bar
+    register_user_page_menu_bar("Bloods", "/bloods")
+
+    # update the bloods after each request that could have affected
     @app.after_request
-    def trigger_first_blood_sync(response):
+    def trigger_bloods_sync(response):
         if request.method in ["POST", "PATCH", "DELETE"]:
             path = request.path
             if (
@@ -153,5 +160,5 @@ def load(app):
                 try:
                     sync_all_bloods()
                 except Exception as e:
-                    print(f"[First Blood Plugin] Sync Error: {e}")
+                    print(f"[Bloods Plugin] Sync Error: {e}")
         return response
