@@ -1,18 +1,25 @@
-from flask import Blueprint, render_template, url_for
+from flask import Blueprint, render_template, url_for, send_from_directory
 from flask import current_app as app
 from CTFd.models import db, Challenges, Solves, Awards, Users
 from CTFd.utils.user import get_current_user
 from CTFd.utils.decorators import authed_only, admins_only
-from CTFd.utils.plugins import register_plugin_asset
 from CTFd.utils.modes import USERS_MODE, TEAMS_MODE
-from CTFd.utils import config
+from CTFd.utils import config, get_config
 import datetime
+import os
 
-FIRST_BLOOD_VALUE=20
+first_blood = Blueprint(
+    "first_blood",
+    __name__,
+    template_folder="templates",
+    static_folder="static",
+    static_url_path="/plugins/first_blood/static",  # ← this makes /plugins/first_blood/static/... work
+)
+
+first_blood_value = 20
+
 
 def load(app):
-    first_blood = Blueprint("first_blood", __name__)
-
     # =============================================
     #  HOOK: Award first blood when a solve is created
     # =============================================
@@ -25,7 +32,6 @@ def load(app):
         )
 
         if first_solve and first_solve.id == solve.id:
-            # This is the first blood!
             user = Users.query.filter_by(id=solve.account_id).first()
             if not user:
                 return
@@ -33,17 +39,16 @@ def load(app):
             award = Awards(
                 name=f"First Blood — {challenge.name}",
                 description=f"First to solve {challenge.name}",
-                value=FIRST_BLOOD_VALUE,
+                value=first_blood_value,
                 category="First Blood",
-                icon=f"/plugins/first_blood/static/first-blood.svg",
+                icon="first-blood.svg",  # relative to static/
                 user_id=user.id,
-                team_id=user.team_id if config.user_mode() == "teams" else None,
+                team_id=user.team_id if config.user_mode() == TEAMS_MODE else None,
                 date=solve.date,
             )
             db.session.add(award)
             db.session.commit()
 
-    # Register hook
     app.events.subscribe("on_challenge_solve", award_first_blood)
 
     # =============================================
@@ -51,17 +56,17 @@ def load(app):
     # =============================================
     @first_blood.route("/firstbloods")
     def firstbloods():
-        # Get all first blood awards
         awards = (
             Awards.query.filter(Awards.category == "First Blood")
             .order_by(Awards.date.desc())
             .all()
         )
 
-        # Enrich with challenge & user/team info
         results = []
         for award in awards:
-            challenge = Challenges.query.get(award.challenge_id)  # may be None
+            challenge = Challenges.query.get(
+                award.challenge_id
+            )  # may be None if deleted
             user = Users.query.get(award.user_id)
 
             entry = {
@@ -69,9 +74,11 @@ def load(app):
                 "challenge": challenge,
                 "user": user,
                 "date": award.date,
-                "challenge_name": challenge.name if challenge else "[deleted]",
+                "challenge_name": (
+                    challenge.name if challenge else "[deleted challenge]"
+                ),
                 "challenge_id": challenge.id if challenge else None,
-                "icon": award.icon,
+                "icon": award.icon or "first-blood.svg",
             }
             results.append(entry)
 
@@ -83,30 +90,24 @@ def load(app):
         )
 
     # =============================================
-    #  ADMIN - Optional: regenerate first bloods
+    #  ADMIN: Regenerate first bloods (optional)
     # =============================================
     @first_blood.route("/admin/firstblood/regenerate", methods=["POST"])
     @admins_only
     def regenerate_first_bloods():
-        # Clear existing first blood awards
         Awards.query.filter_by(category="First Blood").delete()
         db.session.commit()
 
-        # Re-process all solves in chronological order
         all_solves = Solves.query.order_by(Solves.date.asc()).all()
-
         seen = set()
 
         for solve in all_solves:
             chal_id = solve.challenge_id
             if chal_id in seen:
                 continue
-
-            # This is the first solve for this challenge
             challenge = Challenges.query.get(chal_id)
             if not challenge:
                 continue
-
             user = Users.query.get(solve.account_id)
             if not user:
                 continue
@@ -114,11 +115,11 @@ def load(app):
             award = Awards(
                 name=f"First Blood — {challenge.name}",
                 description=f"First to solve {challenge.name}",
-                value=FIRST_BLOOD_VALUE,
+                value=first_blood_value,
                 category="First Blood",
-                icon="/plugins/first_blood/static/first-blood.svg",
+                icon="first-blood.svg",
                 user_id=user.id,
-                team_id=user.team_id if config.user_mode() == "teams" else None,
+                team_id=user.team_id if config.user_mode() == TEAMS_MODE else None,
                 date=solve.date,
             )
             db.session.add(award)
@@ -127,12 +128,12 @@ def load(app):
         db.session.commit()
         return {
             "success": True,
-            "message": f"Regenerated {len(seen)} first blood awards",
+            "message": f"Regenerated {len(seen)} first blood awards.",
         }
 
     app.register_blueprint(first_blood)
 
-    # Optional: add link in top menu / user menu
+    # Optional: Add menu item
     def register_menu():
         return {
             "text": "First Bloods",
@@ -141,13 +142,9 @@ def load(app):
             "icon": "fa-trophy",
         }
 
-    app.pb.register_menu_item("mainbar", "firstbloods", register_menu)
-
-    # Register static assets
-    register_plugin_asset("first_blood", "static/first-blood.svg")
-    register_plugin_asset("first_blood", "static/firstbloods.css")
+    # If your CTFd version supports plugin menu registration:
+    # app.pb.register_menu_item("mainbar", "firstbloods", register_menu)
 
 
 def bless():
-    # This is called when plugin is loaded — you can do migrations here if needed
-    pass
+    pass  # Optional migration hook if needed later

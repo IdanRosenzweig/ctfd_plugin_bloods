@@ -15,7 +15,7 @@
           <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 shadow-sm first-blood-card">
               <div class="card-header d-flex align-items-center">
-                <img src="{{ entry.icon }}" alt="First Blood" width="32" height="32" class="me-2" />
+                <img src="{{ url_for('first_blood.static', filename=entry.icon) }}" alt="First Blood" width="32" height="32" class="me-2" />
                 <h5 class="mb-0">{{ entry.award.name }}</h5>
               </div>
               <div class="card-body">
@@ -28,9 +28,9 @@
                 <p class="text-muted small">Solved on {{ entry.date.strftime('%Y-%m-%d %H:%M UTC') }}</p>
 
                 <div class="d-flex align-items-center mt-3">
-                  {% if user_mode == 'users' or entry.user %}
-                    <img class="avatar avatar-sm me-2" src="{{ entry.user.avatar }}" alt="{{ entry.user.name }}" />
-                    <strong><a href="{{ url_for('users.public', user_id=entry.user.id) }}">{{ entry.user.name }}</a></strong>
+                  {% if entry.user %}
+                    <img class="avatar avatar-sm me-2 rounded-circle" src="{{ entry.user.avatar }}" alt="{{ entry.user.name or 'User' }}" />
+                    <strong><a href="{{ url_for('users.public', user_id=entry.user.id) }}">{{ entry.user.name or 'Anonymous' }}</a></strong>
                   {% elif user_mode == 'teams' and entry.award.team_id %}
                     <strong><a href="{{ url_for('teams.public', team_id=entry.award.team_id) }}">Team {{ entry.award.team.name|default('Unnamed') }}</a></strong>
                   {% endif %}
@@ -49,5 +49,5 @@
 
 {% block stylesheets %}
   {{ super() }}
-  <link rel="stylesheet" href="{{ url_for('static', filename='plugins/first_blood/static/firstbloods.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('first_blood.static', filename='firstbloods.css') }}" />
 {% endblock %}

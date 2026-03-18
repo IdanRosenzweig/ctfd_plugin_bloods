@@ -4,7 +4,7 @@
 
 .first-blood-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(220,53,69,0.18) !important;
+  box-shadow: 0 8px 24px rgba(220, 53, 69, 0.18) !important;
 }
 
 .card-header {
