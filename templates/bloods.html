@@ -35,7 +35,7 @@
               {% for blood in challenge_bloods|sort(attribute='position') %}
                 <tr>
                   {% if loop.first %}
-                    <td rowspan="{{ challenge_bloods|length }}" class="align-middle text-center">
+                    <td rowspan="{{ challenge_bloods|length }}" class="align-middle text-left">
                       <strong>{{ challenge_name }}</strong>
                     </td>
                   {% endif %}
