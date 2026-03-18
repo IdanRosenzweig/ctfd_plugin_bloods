@@ -1,77 +1,87 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 
 {% block content %}
-<div class="jumbotron">
+  <div class="jumbotron">
     <div class="container text-center">
-        <h1>Bloods</h1>
+      <h1>Bloods</h1>
     </div>
-</div>
+  </div>
 
-<div class="container">
+  <div class="container">
     <div class="row">
-        <div class="col-md-12">
-            <table class="table table-bordered table-striped">
-                <thead class="thead-dark">
-                    <tr>
-                        <th>Challenge</th>
-                        <th>Rank</th>
-                        <th>User</th>
-                        <th>Team</th>
-                        <th>Time Achieved</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for challenge_name, challenge_bloods in bloods|groupby('challenge_name') %}
-                        
-                        {% for blood in challenge_bloods|sort(attribute='position') %}
-                        <tr>
-                            {% if loop.first %}
-                            <td rowspan="{{ challenge_bloods|length }}" class="align-middle text-center">
-                                <strong>{{ challenge_name }}</strong>
-                            </td>
-                            {% endif %}
-                            
-                            <td class="align-middle">
-                                {% if blood.position == 1 %}🥇 1st
-                                {% elif blood.position == 2 %}🥈 2nd
-                                {% elif blood.position == 3 %}🥉 3rd
-                                {% endif %}
-                            </td>
-                            
-                            <td class="align-middle">{{ blood.user_name }}</td>
-                            <td class="align-middle">{{ blood.team_name }}</td>
-                            
-                            <td class="blood-time align-middle" data-time="{{ blood.date.isoformat() }}Z">
-                                </td>
-                        </tr>
-                        {% endfor %}
-                        
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="text-center">No bloods drawn yet!</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+      <div class="col-md-12">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <td>
+                <b>Challenge</b>
+              </td>
+              <td>
+                <b>Rank</b>
+              </td>
+              <td>
+                <b>User</b>
+              </td>
+              <td>
+                <b>Team</b>
+              </td>
+              <td>
+                <b>Time Achieved</b>
+              </td>
+            </tr>
+          </thead>
+          <tbody>
+            {% for challenge_name, challenge_bloods in bloods|groupby('challenge_name') %}
+              {% for blood in challenge_bloods|sort(attribute='position') %}
+                <tr>
+                  {% if loop.first %}
+                    <td rowspan="{{ challenge_bloods|length }}" class="align-middle text-center">
+                      <strong>{{ challenge_name }}</strong>
+                    </td>
+                  {% endif %}
+
+                  <td class="align-middle">
+                    {% if blood.position == 1 %}
+                      🥇 1st
+                    {% elif blood.position == 2 %}
+                      🥈 2nd
+                    {% elif blood.position == 3 %}
+                      🥉 3rd
+                    {% endif %}
+                  </td>
+
+                  <td class="align-middle">{{ blood.user_name }}</td>
+                  <td class="align-middle">{{ blood.team_name }}</td>
+
+                  <td class="blood-time align-middle" data-time="{{ blood.date.isoformat() }}Z"></td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" class="text-center">No bloods drawn yet!</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-</div>
+  </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
+  <script>
     // Format UTC database times into the user's local timezone
-    document.addEventListener("DOMContentLoaded", function() {
-        const timeCells = document.querySelectorAll('.blood-time');
-        timeCells.forEach(function(cell) {
-            const utcTime = cell.getAttribute('data-time');
-            if (utcTime && utcTime !== "NoneZ") {
-                const dateObj = new Date(utcTime);
-                cell.innerText = dateObj.toLocaleString();
-            } else {
-                cell.innerText = "Unknown Time";
-            }
-        });
-    });
-</script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const timeCells = document.querySelectorAll('.blood-time')
+      timeCells.forEach(function (cell) {
+        const utcTime = cell.getAttribute('data-time')
+        if (utcTime && utcTime !== 'NoneZ') {
+          const dateObj = new Date(utcTime)
+          cell.innerText = dateObj.toLocaleString()
+        } else {
+          cell.innerText = 'Unknown Time'
+        }
+      })
+    })
+  </script>
 {% endblock %}
