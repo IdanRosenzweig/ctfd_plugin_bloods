@@ -14,7 +14,7 @@ BLOODS_BONUSES = {
 
 # Set the titles and icons for 1st, 2nd, and 3rd place
 TITLES = {1: "First Blood", 2: "Second Blood", 3: "Third Blood"}
-ICONS = {1: "shield", 2: "crosshairs", 3: "star"}
+ICONS = {1: "crown", 2: "crown", 3: "crown"}
 # ---------------------
 
 class BloodAward(db.Model):
