@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <div class="jumbotron">
+    <h1>First Blood Awards</h1>
+    <p class="lead">First solver of each challenge — fastest guns in the CTF</p>
+  </div>
+
+  <div class="container">
+    {% if first_bloods|length == 0 %}
+      <div class="alert alert-info text-center">No first bloods awarded yet. Solve something!</div>
+    {% else %}
+      <div class="row">
+        {% for entry in first_bloods %}
+          <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm first-blood-card">
+              <div class="card-header d-flex align-items-center">
+                <img src="{{ entry.icon }}" alt="First Blood" width="32" height="32" class="me-2" />
+                <h5 class="mb-0">{{ entry.award.name }}</h5>
+              </div>
+              <div class="card-body">
+                {% if entry.challenge %}
+                  <h6><a href="{{ url_for('challenges.details', challenge_id=entry.challenge_id) }}">{{ entry.challenge_name }}</a></h6>
+                {% else %}
+                  <h6 class="text-muted">[challenge deleted]</h6>
+                {% endif %}
+
+                <p class="text-muted small">Solved on {{ entry.date.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+
+                <div class="d-flex align-items-center mt-3">
+                  {% if user_mode == 'users' or entry.user %}
+                    <img class="avatar avatar-sm me-2" src="{{ entry.user.avatar }}" alt="{{ entry.user.name }}" />
+                    <strong><a href="{{ url_for('users.public', user_id=entry.user.id) }}">{{ entry.user.name }}</a></strong>
+                  {% elif user_mode == 'teams' and entry.award.team_id %}
+                    <strong><a href="{{ url_for('teams.public', team_id=entry.award.team_id) }}">Team {{ entry.award.team.name|default('Unnamed') }}</a></strong>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="card-footer bg-transparent">
+                <span class="badge bg-danger">+{{ entry.award.value }} pts</span>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block stylesheets %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='plugins/first_blood/static/firstbloods.css') }}" />
+{% endblock %}
