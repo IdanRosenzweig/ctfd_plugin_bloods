@@ -30,15 +30,15 @@ def init_default_configs():
         defaults = {
             "bloods_bonus_1": "20",
             "bloods_title_1": "First Blood",
-            "bloods_icon_1": "crown",
+            "bloods_icon_1": "lightning",
             
             "bloods_bonus_2": "10",
             "bloods_title_2": "Second Blood",
-            "bloods_icon_2": "crown",
+            "bloods_icon_2": "lightning",
             
             "bloods_bonus_3": "5",
             "bloods_title_3": "Third Blood",
-            "bloods_icon_3": "crown",
+            "bloods_icon_3": "lightning",
             
             "bloods_filter_mode": "blacklist",
             "bloods_filter_list": "",
@@ -56,15 +56,15 @@ def reset_default_configs():
     defaults = {
         "bloods_bonus_1": "20",
         "bloods_title_1": "First Blood",
-        "bloods_icon_1": "crown",
+        "bloods_icon_1": "lightning",
         
         "bloods_bonus_2": "10",
         "bloods_title_2": "Second Blood",
-        "bloods_icon_2": "crown",
+        "bloods_icon_2": "lightning",
         
         "bloods_bonus_3": "5",
         "bloods_title_3": "Third Blood",
-        "bloods_icon_3": "crown",
+        "bloods_icon_3": "lightning",
         
         "bloods_filter_mode": "blacklist",
         "bloods_filter_list": "",
@@ -112,7 +112,7 @@ def sync_all_bloods():
             )
         )
         titles[i] = get_config(f"bloods_title_{i}") or default_title
-        icons[i] = get_config(f"bloods_icon_{i}") or "crown"
+        icons[i] = get_config(f"bloods_icon_{i}") or "lightning"
 
     filter_mode = get_config("bloods_filter_mode")
     filter_raw = get_config("bloods_filter_list") or ""
@@ -273,8 +273,6 @@ def load(app):
             no_bloods=int(get_config("bloods_no_bloods") or 3),
         )
 
-    register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
-
     # bloods page
     @bloods_bp.route("/bloods", methods=["GET"])
     def bloods_page():
@@ -313,6 +311,7 @@ def load(app):
 
     app.register_blueprint(bloods_bp)
 
+    register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
     register_user_page_menu_bar("Bloods", "/bloods")
 
     # perform sync on every action that could have caused a relevant change
