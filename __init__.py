@@ -320,10 +320,11 @@ def load(app):
         if request.method in ["POST", "PATCH", "DELETE"]:
             path = request.path
             if (
-                path.startswith("/api/v1/challenges/attempt")
+                path.startswith("/api/v1/challenges")
                 or path.startswith("/api/v1/users")
                 or path.startswith("/api/v1/teams")
                 or path.startswith("/api/v1/solves")
+                or path.startswith("/api/v1/submissions")
             ):
                 try:
                     sync_all_bloods()
