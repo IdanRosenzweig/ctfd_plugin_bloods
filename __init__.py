@@ -1,9 +1,11 @@
 import datetime
-from flask import Blueprint, render_template, request
+import threading
+from flask import Blueprint, render_template, request, abort
 from CTFd.models import db, Solves, Awards, Challenges, Users, Teams, Configs
 from CTFd.utils import get_config, set_config
 from CTFd.utils.decorators import admins_only
 from CTFd.plugins import register_user_page_menu_bar, register_admin_plugin_menu_bar
+from CTFd.cache import cache
 
 
 class BloodAward(db.Model):
@@ -31,11 +33,20 @@ def config_get_no_bloods() -> str | None:
 def config_key_blood_val(blood_num: int) -> str:
   return f"{config_key_prefix}blood_{blood_num}_val"
 
+def config_get_blood_val(blood_num: int) -> str | None:
+  return get_config(config_key_blood_val(blood_num))
+
 def config_key_blood_title(blood_num: int) -> str:
   return f"{config_key_prefix}blood_{blood_num}_title"
 
+def config_get_blood_title(blood_num: int) -> str | None:
+  return get_config(config_key_blood_title(blood_num))
+
 def config_key_blood_icon(blood_num: int) -> str:
   return f"{config_key_prefix}blood_{blood_num}_icon"
+
+def config_get_blood_icon(blood_num: int) -> str | None:
+  return get_config(config_key_blood_icon(blood_num))
 
 # config filtering
 def config_key_filter_mode() -> str:
@@ -74,7 +85,7 @@ def bloods_config_init():
   """sets config to the default if it doesn't exist yet"""
 
   # check if a config already exists
-  if get_config(config_key_no_bloods()) is not None:
+  if config_get_no_bloods() is not None:
     return
   
   # set default config
@@ -116,32 +127,33 @@ def bloods_sync():
   challenges = Challenges.query.all()
 
   # retrieve the current config
-  no_bloods = int(get_config(config_key_no_bloods()) or 3)
+  no_bloods = int(config_get_no_bloods() or 3)
 
   bloods_val = {}
   bloods_titles = {}
   bloods_icons = {}
-
+  
   for i in range(1, no_bloods + 1):
-      bloods_val[i] = int(get_config(config_key_blood_val(i)) or 0)
+    # blood val
+    blood_val_raw = config_get_blood_val(i)
+    bloods_val[i] = int(blood_val_raw) if blood_val_raw is not None else 0
 
-      default_title = (
-          "First Blood"
-          if i == 1
-          else (
-              "Second Blood"
-              if i == 2
-              else "Third Blood" if i == 3 else f"{i}th Blood"
-          )
-      )
-      bloods_titles[i] = get_config(config_key_blood_title(i)) or default_title
-      bloods_icons[i] = get_config(config_key_blood_icon(i)) or "lightning"
+    # blood title
+    blood_title_raw = config_get_blood_title(i)
+    bloods_titles[i] = blood_title_raw if blood_title_raw is not None else f"{i}th Blood"
+    
+    # blood icon
+    blood_icon_raw = config_get_blood_icon(i)
+    bloods_icons[i] = blood_icon_raw if blood_icon_raw is not None else "lightning"
 
   filter_mode = config_get_filter_mode()
-  filter_raw = config_get_filter_list()
-  filter_list = [name.strip() for name in filter_raw.split(",") if name.strip()]
-  if filter_list is None:
-    raise ValueError(f"Invalid filter list")
+  if filter_mode is None:
+    raise ValueError(f"invalid filter mode")
+    
+  filter_list_raw = config_get_filter_list()
+  if filter_list_raw is None:
+    raise ValueError(f"invalid filter list")
+  filter_list = [name.strip() for name in filter_list_raw.split(",") if name.strip()]
     
   # sync bloods for each chal
   for chal in challenges:
@@ -153,7 +165,7 @@ def bloods_sync():
     elif filter_mode == "whitelist":
       has_blood = chal.name in filter_list
     else:
-      raise ValueError(f"Invalid filter mode: {filter_mode}")
+      raise ValueError(f"invalid filter mode: {filter_mode}")
 
     if not has_blood: # chal doesn't have bloods enabled
       # destroy any existing awards (if it has any)
@@ -281,7 +293,7 @@ def load(app):
           "admin_bloods.html",
           success=True,
           message="config has been reset to default",
-          no_bloods=int(get_config(config_key_no_bloods()) or 3),
+          no_bloods=int(config_get_no_bloods() or 3),
         )
         
       # save config
@@ -298,60 +310,65 @@ def load(app):
           "admin_bloods.html",
           success=True,
           message="config has beed updated",
-          no_bloods=int(get_config(config_key_no_bloods()) or 3),
+          no_bloods=int(config_get_no_bloods() or 3),
         )
       
       # invalid action
       else:
-          return render_error()
+        return abort(400)
 
     elif request.method == "GET":
       return render_template(
         "admin_bloods.html",
-        no_bloods=int(get_config(config_key_no_bloods()) or 3),
+        no_bloods=int(config_get_no_bloods() or 3),
       )
       
     else:
-      return render_error()
+      return abort(400)
 
   @bloods_bp.route("/bloods", methods=["GET"])
   def bloods_page():
     if request.method == "GET":
       bloods = []
 
-      bloods_data = BloodAward.query.all()
-      for blood_data in bloods_data:
-        chal = Challenges.query.get(blood_data.challenge_id)
-        if not chal:
-          continue
-        
-        user = Users.query.get(blood_data.user_id)
-        team = Teams.query.get(blood_data.team_id) if blood_data.team_id else None
-        solve = Solves.query.filter_by(
-            challenge_id=blood_data.challenge_id, user_id=blood_data.user_id
-        ).first()
+      results = db.session.query(
+          BloodAward.position,
+          Challenges.id.label('challenge_id'),
+          Challenges.name.label('challenge_name'),
+          Users.id.label('user_id'),
+          Users.name.label('user_name'),
+          Teams.id.label('team_id'),
+          Teams.name.label('team_name'),
+          Solves.date.label('date')
+      ).join(Challenges, BloodAward.challenge_id == Challenges.id) \
+      .join(Users, BloodAward.user_id == Users.id) \
+      .outerjoin(Teams, BloodAward.team_id == Teams.id) \
+      .join(Solves, db.and_(
+          Solves.challenge_id == BloodAward.challenge_id, 
+          Solves.user_id == BloodAward.user_id
+      )).all()
 
-        bloods.append(
-          {
-            "challenge_name": chal.name,
-            "challenge_id": chal.id,
-            "user_name": user.name if user else "Unknown",
-            "user_id": user.id if user else None,
-            "team_name": team.name if team else "None",
-            "team_id": team.id if team else None,
-            "date": solve.date if solve else None,
-            "position": blood_data.position,
-          }
-        )
+      for row in results:
+        bloods.append({
+            "challenge_name": row.challenge_name,
+            "challenge_id": row.challenge_id,
+            "user_name": row.user_name,
+            "user_id": row.user_id,
+            "team_name": row.team_name if row.team_name else "None",
+            "team_id": row.team_id,
+            "date": row.date,
+            "position": row.position,
+        })
       
       bloods.sort(
           key=lambda x: x["date"] if x["date"] else datetime.datetime.min,
           reverse=True,
       )
+      
       return render_template("bloods.html", bloods=bloods)
-
+    
     else:
-      return render_error()
+      return abort(400)
     
   app.register_blueprint(bloods_bp)
 
@@ -366,17 +383,39 @@ def load(app):
   def trigger_sync(response):
     if request.method in ["POST", "PATCH", "DELETE"]:
       path = request.path
-      if (
-        path.startswith("/api/v1/challenges")
-        or path.startswith("/api/v1/users")
-        or path.startswith("/api/v1/teams")
-        or path.startswith("/api/v1/solves")
-        or path.startswith("/api/v1/submissions")
-      ):
-        try:
-          bloods_sync()
-        except Exception as e:
-          print(f"[Bloods Plugin] sync error: {e}")
+      endpoints = [
+        "/api/v1/challenges",
+        "/api/v1/users", 
+        "/api/v1/teams",
+        "/api/v1/solves",
+        "/api/v1/submissions"
+      ]
+      
+      # check if the requested path matches any endpoint that requires a sync
+      if not any(path.startswith(ep) for ep in endpoints):
+        return response
+      
+      # check debounce lock
+      if cache.get("bloods_sync_lock"):
+        return response
     
-    return response
+      # set debounce lock
+      cache.set("bloods_sync_lock", True, timeout=5)
+      
+      # run the sync in a background thread so it doesn't block the request
+      app_ctx = app.app_context()
+      def run_sync_thread(ctx):
+        with ctx:
+          try:
+            bloods_sync()
+          except Exception as e:
+            print(f"[bloods plugin] sync error: {e}")
+            cache.delete("bloods_sync_lock")
+      
+      threading.Thread(target=run_sync_thread, args=(app_ctx,)).start()
+
+      return response
+    
+    else:
+      return response
   

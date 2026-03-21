@@ -51,15 +51,15 @@
                             <tbody>
                                 {% for i in range(1, no_bloods + 1) %}
                                 <tr>
-                                    <td class="align-middle"><strong>{{ i }}{% if i==1 %}{% elif i==2 %}{% elif i==3 %}{% else %}{% endif %}</strong></td>
+                                    <td class="align-middle"><strong>{{ i }}</strong></td>
                                     <td>
-                                        <input type="number" class="form-control" name="bloods_bonus_{{ i }}" value="{{ get_config('bloods_bonus_' ~ i) or '0' }}" required>
+                                        <input type="number" class="form-control" name="bloods_blood_{{ i }}_val" value="{{ get_config('bloods_blood_' ~ i ~ '_val') or '0' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_title_{{ i }}" value="{{ get_config('bloods_title_' ~ i) or i ~ 'th Blood' }}" required>
+                                        <input type="text" class="form-control" name="bloods_blood_{{ i }}_title" value="{{ get_config('bloods_blood_' ~ i ~ '_title') or i ~ 'th Blood' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_icon_{{ i }}" value="{{ get_config('bloods_icon_' ~ i) or 'lightning' }}" required>
+                                        <input type="text" class="form-control" name="bloods_blood_{{ i }}_icon" value="{{ get_config('bloods_blood_' ~ i ~ '_icon') or 'lightning' }}" required>
                                     </td>
                                 </tr>
                                 {% endfor %}
