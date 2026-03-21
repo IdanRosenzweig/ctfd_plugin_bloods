@@ -40,7 +40,7 @@ def config_key_blood_title(blood_num: int) -> str:
   return f"{config_key_prefix}blood_{blood_num}_title"
 
 def config_get_blood_title(blood_num: int) -> str | None:
-  return get_config(config_key_blood_title(blood_num))
+  return get_config(config_key_blood_title(blood_num)) or ""
 
 def config_key_blood_icon(blood_num: int) -> str:
   return f"{config_key_prefix}blood_{blood_num}_icon"
@@ -59,7 +59,7 @@ def config_key_filter_list() -> str:
   return f"{config_key_prefix}filter_list"
 
 def config_get_filter_list() -> str | None:
-  return get_config(config_key_filter_list())
+  return get_config(config_key_filter_list()) or ""
 
 # default config
 config_default = {
