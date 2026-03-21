@@ -152,7 +152,7 @@ def bloods_sync():
     
   filter_list_raw = config_get_filter_list()
   if filter_list_raw is None:
-    raise ValueError(f"invalid filter list")
+    raise ValueError(f"invalid filter list. list: {filter_list_raw}, mode: {filter_mode}")
   filter_list = [name.strip() for name in filter_list_raw.split(",") if name.strip()]
     
   # sync bloods for each chal
