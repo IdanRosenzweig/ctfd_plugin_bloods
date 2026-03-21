@@ -27,7 +27,7 @@ def config_key_no_bloods() -> str:
   return f"{config_key_prefix}no_bloods"
 
 def config_get_no_bloods() -> str | None:
-  return get_config(config_key_no_bloods()) or None
+  return get_config(config_key_no_bloods())
 
 # config bloods
 def config_key_blood_val(blood_num: int) -> str:
@@ -53,13 +53,13 @@ def config_key_filter_mode() -> str:
   return f"{config_key_prefix}filter_mode"
 
 def config_get_filter_mode() -> str | None:
-  return get_config(config_key_filter_mode()) or None
+  return get_config(config_key_filter_mode())
 
 def config_key_filter_list() -> str:
   return f"{config_key_prefix}filter_list"
 
 def config_get_filter_list() -> str | None:
-  return get_config(config_key_filter_list()) or None
+  return get_config(config_key_filter_list())
 
 # default config
 config_default = {
