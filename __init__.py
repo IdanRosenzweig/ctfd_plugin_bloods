@@ -293,6 +293,17 @@ def load(app):
           success=True,
           message="config has been reset to default",
           no_bloods=int(config_get_no_bloods() or 3),
+          config_key_no_bloods=config_key_no_bloods,
+          config_key_blood_val=config_key_blood_val,
+          config_get_blood_val=config_get_blood_val,
+          config_key_blood_title=config_key_blood_title,
+          config_get_blood_title=config_get_blood_title,
+          config_key_blood_icon=config_key_blood_icon,
+          config_get_blood_icon=config_get_blood_icon,
+          config_key_filter_mode=config_key_filter_mode,
+          config_get_filter_mode=config_get_filter_mode,
+          config_key_filter_list=config_key_filter_list,
+          config_get_filter_list=config_get_filter_list
         )
         
       # save config
@@ -308,8 +319,19 @@ def load(app):
         return render_template(
           "admin_bloods.html",
           success=True,
-          message="config has beed updated",
+          message="config has been updated",
           no_bloods=int(config_get_no_bloods() or 3),
+          config_key_no_bloods=config_key_no_bloods,
+          config_key_blood_val=config_key_blood_val,
+          config_get_blood_val=config_get_blood_val,
+          config_key_blood_title=config_key_blood_title,
+          config_get_blood_title=config_get_blood_title,
+          config_key_blood_icon=config_key_blood_icon,
+          config_get_blood_icon=config_get_blood_icon,
+          config_key_filter_mode=config_key_filter_mode,
+          config_get_filter_mode=config_get_filter_mode,
+          config_key_filter_list=config_key_filter_list,
+          config_get_filter_list=config_get_filter_list
         )
       
       # invalid action
@@ -320,6 +342,17 @@ def load(app):
       return render_template(
         "admin_bloods.html",
         no_bloods=int(config_get_no_bloods() or 3),
+        config_key_no_bloods=config_key_no_bloods,
+        config_key_blood_val=config_key_blood_val,
+        config_get_blood_val=config_get_blood_val,
+        config_key_blood_title=config_key_blood_title,
+        config_get_blood_title=config_get_blood_title,
+        config_key_blood_icon=config_key_blood_icon,
+        config_get_blood_icon=config_get_blood_icon,
+        config_key_filter_mode=config_key_filter_mode,
+        config_get_filter_mode=config_get_filter_mode,
+        config_key_filter_list=config_key_filter_list,
+        config_get_filter_list=config_get_filter_list
       )
       
     else:

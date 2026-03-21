@@ -28,7 +28,7 @@
                     <div class="card-body">
                         <div class="form-group mb-0">
                             <label><strong>Number of Bloods</strong></label>
-                            <input type="number" class="form-control" name="bloods_no_bloods" value="{{ no_bloods }}" min="0" required>
+                            <input type="number" class="form-control" name="{{ config_key_no_bloods() }}" value="{{ no_bloods }}" min="0" required>
                             <small class="form-text text-muted">
                                 If you increase this number, click "Save" first to generate the new rows below so you can edit them!
                             </small>
@@ -53,13 +53,13 @@
                                 <tr>
                                     <td class="align-middle"><strong>{{ i }}</strong></td>
                                     <td>
-                                        <input type="number" class="form-control" name="bloods_blood_{{ i }}_val" value="{{ get_config('bloods_blood_' ~ i ~ '_val') or '0' }}" required>
+                                        <input type="number" class="form-control" name="{{ config_key_blood_val(i) }}" value="{{ config_get_blood_val(i) or '0' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_blood_{{ i }}_title" value="{{ get_config('bloods_blood_' ~ i ~ '_title') or i ~ 'th Blood' }}" required>
+                                        <input type="text" class="form-control" name="{{ config_key_blood_title(i) }}" value="{{ config_get_blood_title(i) or i ~ 'th Blood' }}" required>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control" name="bloods_blood_{{ i }}_icon" value="{{ get_config('bloods_blood_' ~ i ~ '_icon') or 'lightning' }}" required>
+                                        <input type="text" class="form-control" name="{{ config_key_blood_icon(i) }}" value="{{ config_get_blood_icon(i) or 'lightning' }}" required>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -75,14 +75,14 @@
                     <div class="card-body">
                         <div class="form-group">
                             <label>Filter Mode</label>
-                            <select class="form-control" name="bloods_filter_mode">
-                                <option value="blacklist" {% if get_config('bloods_filter_mode') == 'blacklist' %}selected{% endif %}>Blacklist (Exclude specific)</option>
-                                <option value="whitelist" {% if get_config('bloods_filter_mode') == 'whitelist' %}selected{% endif %}>Whitelist (Only include specific)</option>
+                            <select class="form-control" name="{{ config_key_filter_mode() }}">
+                                <option value="blacklist" {% if config_get_filter_mode() == 'blacklist' %}selected{% endif %}>Blacklist (Exclude specific)</option>
+                                <option value="whitelist" {% if config_get_filter_mode() == 'whitelist' %}selected{% endif %}>Whitelist (Only include specific)</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Challenge Names</label>
-                            <textarea class="form-control" name="bloods_filter_list" rows="5" placeholder="welcome, sanity check, rules">{{ get_config('bloods_filter_list') }}</textarea>
+                            <textarea class="form-control" name="{{ config_key_filter_list() }}" rows="5" placeholder="welcome, sanity check, rules">{{ config_get_filter_list() }}</textarea>
                             <small class="form-text text-muted">Separate multiple challenge names with a comma.</small>
                         </div>
                     </div>
