@@ -136,8 +136,11 @@ def bloods_sync():
   for i in range(1, no_bloods + 1):
     # blood val
     blood_val_raw = config_get_blood_val(i)
-    bloods_val[i] = int(blood_val_raw) if blood_val_raw is not None else 0
-
+    if blood_val_raw and str(blood_val_raw).isdigit():
+        bloods_val[i] = int(blood_val_raw)
+    else:
+        bloods_val[i] = 0
+        
     # blood title
     blood_title_raw = config_get_blood_title(i)
     bloods_titles[i] = blood_title_raw if blood_title_raw is not None else f"{i}th Blood"
@@ -146,13 +149,9 @@ def bloods_sync():
     blood_icon_raw = config_get_blood_icon(i)
     bloods_icons[i] = blood_icon_raw if blood_icon_raw is not None else "lightning"
 
-  filter_mode = config_get_filter_mode()
-  if filter_mode is None:
-    raise ValueError(f"invalid filter mode")
+  filter_mode = config_get_filter_mode() or "blacklist"
     
   filter_list_raw = config_get_filter_list()
-  if filter_list_raw is None:
-    raise ValueError(f"invalid filter list. list: {filter_list_raw}, mode: {filter_mode}")
   filter_list = [name.strip() for name in filter_list_raw.split(",") if name.strip()]
     
   # sync bloods for each chal
@@ -373,10 +372,10 @@ def load(app):
   app.register_blueprint(bloods_bp)
 
   # register the admin dashboard in the admin menu bar
-  register_admin_plugin_menu_bar("Bloods Config", "/admin/bloods")
+  register_admin_plugin_menu_bar("bloods", "/admin/bloods")
 
   # register the page in the user menu bar
-  register_user_page_menu_bar("Bloods", "/bloods")
+  register_user_page_menu_bar("bloods", "/bloods")
 
   # perform sync on every action that could have caused a relevant change
   @app.after_request
