@@ -34,11 +34,6 @@ def add(
     award_value: int,
     award_icon: str
   ) -> None:
-  """
-  Creates both the visible Award and the Bloods tracker row.
-  Commits inside the function.
-  """
-  
   # create an award
   award = Awards(
     user_id=solve.user_id,
@@ -64,11 +59,6 @@ def add(
   db.session.commit()
 
 def remove(tracker: Bloods) -> None:
-  """
-  Deletes the tracker row + linked award.
-  Safe if award is already gone.
-  Commits inside.
-  """
   if not tracker: return
 
   award = Awards.query.filter_by(id=tracker.award_id).first()
@@ -79,9 +69,6 @@ def remove(tracker: Bloods) -> None:
   db.session.commit()
 
 def remove_all_for_chal(chal_id: int) -> None:
-  """
-  Deletes every blood (trackers + awards) for the given challenge.
-  """
   trackers = Bloods.query.filter_by(challenge_id=chal_id).all()
   for tracker in trackers:
     remove(tracker)
