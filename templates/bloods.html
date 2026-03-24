@@ -36,7 +36,7 @@
                 <tr>
                   {% if loop.first %}
                     <td rowspan="{{ challenge_bloods|length }}" class="align-middle text-left">
-                      <a href="{{ url_for('challenges.listing') }}">{{ challenge_name }}</a>
+		      <a href="{{ url_for('challenges.listing') }}#{{ challenge_name }}-{{ blood.challenge_id }}">{{ challenge_name }}</a>
                     </td>
                   {% endif %}
 
