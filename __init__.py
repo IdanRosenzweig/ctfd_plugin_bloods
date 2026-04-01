@@ -143,7 +143,7 @@ def load(app):
   register_admin_plugin_menu_bar("bloods", "/admin/bloods")
 
   # register the page in the user menu bar
-  register_user_page_menu_bar("bloods", "/bloods")
+  register_user_page_menu_bar("Bloods", "/bloods")
 
   # perform sync on every action that could have caused a relevant change
   @app.after_request
