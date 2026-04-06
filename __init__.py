@@ -14,7 +14,7 @@ from .utils import bloods
 def load(app):
   app.db.create_all()
 
-  # on startup, init config config and perform initial sync
+  # on startup, init config and perform initial sync
   with app.app_context():
     config.init()
 
@@ -149,6 +149,7 @@ def load(app):
   @app.after_request
   def trigger_sync(response):
     if request.method in ["POST", "PATCH", "DELETE"]:
+      # check if the requested path matches any endpoint that requires a sync
       path = request.path
       endpoints = [
         "/api/v1/challenges",
@@ -158,7 +159,6 @@ def load(app):
         "/api/v1/submissions"
       ]
       
-      # check if the requested path matches any endpoint that requires a sync
       if not any(path.startswith(ep) for ep in endpoints):
         return response
       
