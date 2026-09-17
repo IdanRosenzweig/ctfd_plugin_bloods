@@ -1,10 +1,9 @@
 import datetime
-import threading
 
 from flask import Blueprint, abort, render_template, request
 
-from CTFd.cache import cache
 from CTFd.plugins import register_admin_plugin_menu_bar, register_user_page_menu_bar
+from CTFd.plugins.background_sync import register_sync_hook
 from CTFd.utils.decorators import admins_only
 from CTFd.utils.decorators.visibility import (
     check_account_visibility,
@@ -155,45 +154,6 @@ def load(app):
     register_user_page_menu_bar("Bloods", "/bloods")
 
     # perform sync on every action that could have caused a relevant change
-    @app.after_request
-    def trigger_sync(response):
-        if request.method in ["POST", "PATCH", "DELETE"]:
-            # check if the requested path matches any endpoint that requires a sync
-            path = request.path
-            endpoints = [
-                "/api/v1/challenges",
-                "/api/v1/users",
-                "/api/v1/teams",
-                "/api/v1/solves",
-                "/api/v1/submissions",
-            ]
-
-            if not any(path.startswith(ep) for ep in endpoints):
-                return response
-
-            # check debounce
-            if cache.get("bloods_sync_lock"):
-                return response
-
-            # set debounce
-            cache.set("bloods_sync_lock", True, timeout=5)
-
-            # run the sync in a background thread so it doesn't block the request
-            app_ctx = app.app_context()
-
-            def run_sync_thread(ctx):
-                with ctx:
-                    try:
-                        bloods.sync()
-                    except Exception as e:
-                        print(f"[bloods plugin] sync error: {e}")
-                        cache.delete(
-                            "bloods_sync_lock"
-                        )  # it can be helpful to release the debounce, as the sync didn't complete successfully
-
-            threading.Thread(target=run_sync_thread, args=(app_ctx,)).start()
-
-            return response
-
-        else:
-            return response
+    register_sync_hook(
+        app, name="bloods", lock_key="bloods_sync_lock", sync=bloods.sync
+    )
